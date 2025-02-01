@@ -1,0 +1,7 @@
+version = 0.1
+[default]
+[default.build]
+build-dir = ".aws-sam/build"
+[default.local_start_api]
+port = 3000
+host = "127.0.0.1"

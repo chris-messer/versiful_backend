@@ -1,0 +1,35 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Resources:
+  SmsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: sms_handler.handler
+      Runtime: python3.9
+      CodeUri: ./lambdas/sms/
+      Environment:
+        Variables:
+          ENV_VAR: "sms_value"
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /sms
+            Method: POST
+
+  WebFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: web_handler.handler
+      Runtime: python3.9
+      CodeUri: ./lambdas/web/
+      Environment:
+        Variables:
+          ENV_VAR: "web_value"
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /web
+            Method: GET

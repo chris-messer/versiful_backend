@@ -1,0 +1,64 @@
+resource "aws_s3_bucket" "react_static_site" {
+  bucket        = "${var.environment}-versiful-front-end" # Replace with a unique bucket name
+  force_destroy = true
+}
+
+resource "aws_s3_bucket_website_configuration" "react_static_site_website" {
+  bucket = aws_s3_bucket.react_static_site.id
+
+  index_document {
+    suffix = "index.html"
+  }
+
+  error_document {
+    key = "index.html"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "react_static_site_public_access" {
+  bucket = aws_s3_bucket.react_static_site.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_policy" "react_static_site_policy" {
+  bucket = aws_s3_bucket.react_static_site.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "PublicReadGetObject"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.react_static_site.arn}/*"
+      }
+    ]
+  })
+}
+
+resource "null_resource" "deploy_react_project" {
+  provisioner "local-exec" {
+    command = <<EOT
+      rm -rf versiful_frontend &&
+      git clone --branch ${var.environment == "prod" ? "main" : var.environment} https://github.com/chris-messer/versiful_frontend.git versiful_frontend &&
+      https://github.com/chris-messer/versiful_frontend.git
+      cd versiful_frontend &&
+      npm install &&
+      npm run build &&
+      cd .. &&
+      aws s3 sync versiful_frontend/dist s3://${aws_s3_bucket.react_static_site.bucket} --delete
+      aws s3 sync versiful_frontend/dist s3://${aws_s3_bucket.react_static_site.bucket} --delete --exact-timestamps --metadata-directive REPLACE
+      aws s3 cp versiful_frontend/dist/index.html s3://${var.environment}-versiful-front-end/index.html --content-type "text/html"
+
+    EOT
+  }
+  triggers = {
+    force_redeploy = timestamp()
+  }
+
+}

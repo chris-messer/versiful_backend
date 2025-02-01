@@ -1,0 +1,4 @@
+requests
+twilio
+openai==1.39.0
+exceptiongroup

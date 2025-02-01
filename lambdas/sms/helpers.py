@@ -1,0 +1,136 @@
+import requests
+from urllib.parse import parse_qs
+import boto3
+import json
+from botocore.exceptions import ClientError
+from twilio.rest import Client
+
+
+
+def parse_url_string(url_string):
+    parsed_dict = {key: value[0] if len(value) == 1 else value for key, value in parse_qs(url_string).items()}
+    return parsed_dict
+
+def get_secret():
+    secret_name = "dev-versiful_secrets"
+    region_name = "us-east-1"
+
+    # Create a Secrets Manager client
+    session = boto3.session.Session()
+    client = session.client(
+        service_name='secretsmanager',
+        region_name=region_name
+    )
+
+    try:
+        get_secret_value_response = client.get_secret_value(
+            SecretId=secret_name
+        )
+    except ClientError as e:
+        # For a list of exceptions thrown, see
+        # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
+        raise e
+
+    secret = get_secret_value_response['SecretString']
+    return json.loads(secret)
+    # Your code goes here.
+
+def generate_response(message, model="gpt-4o"):
+    """
+        Sends a message to OpenAI's GPT-4o model and returns the response.
+
+        :param api_key: Your OpenAI API key
+        :param message: The message to send
+        :param model: The model to use (default is "gpt-4o")
+        :return: The model's response
+        """
+
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {get_secret()['gpt']}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": 'You are a expert in the bible. When a user tells you their situation '
+                                          'or what they are feeling, you will reply back with the location of a '
+                                          'relevant parable in the bible, and then a medium length '
+                                          'summary of that parable. '
+                                          'Return only the location of the parable, a new line, and then the summary. '
+                                          'Do not include anything else. '
+                                          ''
+                                          'Never, ever stray from this pattern. You should try your best to match '
+                                          'what the user said with something you can provide biblical guidance for. '
+                                          'If a user tries to request something '
+                                          'outside of bibliccal guidance, respond that you are unable to assist with '
+                                          'that and provide a sample question you are able to assist with.'},
+            {"role": "user", "content": message}]
+    }
+
+    try:
+        response = requests.post(url, headers=headers, data=json.dumps(data))
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
+    except requests.exceptions.RequestException as e:
+        return f"Error: {str(e)}"
+
+def generate_photo(prompt):
+    url = "https://api.openai.com/v1/images/generations"
+    payload = json.dumps({
+        "model": "dall-e-3",
+        "prompt": f"{prompt}",
+        "n": 1,
+        "size": "1024x1024"
+    })
+    auth = get_secret()['dalle_secret']
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {auth}'
+    }
+
+    response = requests.request("POST", url, headers=headers, data=payload)
+    r = json.loads(response.text)
+
+    return r
+
+def get_twilio_secrets():
+    secret_name = "dev-versiful_secrets"
+    region_name = "us-east-1"
+
+    # Create a Secrets Manager client
+    session = boto3.session.Session()
+    client = session.client(
+        service_name='secretsmanager',
+        region_name=region_name
+    )
+
+    try:
+        get_secret_value_response = client.get_secret_value(
+            SecretId=secret_name
+        )
+    except ClientError as e:
+        # For a list of exceptions thrown, see
+        # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
+        raise e
+
+    secret = get_secret_value_response['SecretString']
+    return json.loads(secret)
+
+
+def send_message(to_num, message):
+    twilio_auth = get_twilio_secrets()
+    account_sid = twilio_auth['twilio_account_sid']
+    auth_token = twilio_auth['twilio_auth']
+
+    client = Client(account_sid, auth_token)
+
+    message = client.messages.create(
+        from_='+18336811158',
+        body=f'{message}',
+        to= f'{to_num}'
+    )
+
+    print(message.sid)
+
+

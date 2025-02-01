@@ -1,0 +1,36 @@
+*terraform/environments/dev/terraform.tfvars
+*.zip
+*/layer/python
+**/versiful_frontend/
+.idea/
+
+# Ignore Terraform state files (VERY IMPORTANT!)
+*.tfstate
+*.tfstate.backup
+
+# Ignore Terraform crash logs
+crash.log
+
+# Ignore Terraform variable files with sensitive data
+*.tfvars
+*.tfvars.json
+
+# Ignore Terraform plan output files
+*.tfplan
+
+# Ignore generated `.terraform` directory (Terraform downloads plugins & dependencies here)
+.terraform/
+.terraform.lock.hcl
+
+# Ignore Terraform logs (if any exist)
+*.log
+
+# Ignore Terraform provider cache (if enabled)
+.terraform.d/plugin-cache/
+
+# Ignore Terraform execution temp files
+terraform.tfstate.d/
+
+# Ignore Terraform CLI configuration
+.terraformrc
+terraform.rc
