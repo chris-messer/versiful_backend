@@ -8,6 +8,14 @@ variable "domain_name" {
   description = "Domain name for the environment"
 }
 
+variable "region" {
+  description = "Domain name for the environment"
+}
+
+variable "project_name" {
+    description = "Name of the project"
+    }
+
 variable "website_id" {
   description = "S3 website ID"
   type        = string

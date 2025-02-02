@@ -1,14 +1,3 @@
-variable "environment" {
-  description = "Deployment environment (e.g., dev, prod)"
-  type        = string
-  default     = "dev"
-}
-
-variable "domain_name" {
-  description = "Domain name for the environment"
-  default = "versiful.io"
-}
-
 variable "twilio_sid" {
   description = "Twilio SID"
   type        = string

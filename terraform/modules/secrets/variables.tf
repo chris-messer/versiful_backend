@@ -3,6 +3,11 @@ variable "environment" {
   type        = string
   default     = "dev"
 }
+
+variable "project_name" {
+    description = "Name of the project"
+    }
+
 variable "twilio_sid" {
   description = "Twilio SID"
   type        = string

@@ -1,9 +1,9 @@
-resource "aws_secretsmanager_secret" "versiful_secrets" {
-  name = "${var.environment}-versiful_secrets"
+resource "aws_secretsmanager_secret" "secrets" {
+  name = "${var.environment}-${var.project_name}_secrets"
 }
 
-resource "aws_secretsmanager_secret_version" "versiful_secret_version" {
-  secret_id     = aws_secretsmanager_secret.versiful_secrets.id
+resource "aws_secretsmanager_secret_version" "secret_version" {
+  secret_id     = aws_secretsmanager_secret.secrets.id
 
   secret_string = jsonencode({
     "twilio_sid"          = var.twilio_sid,

@@ -1,5 +1,5 @@
 resource "aws_s3_bucket" "react_static_site" {
-  bucket        = "${var.environment}-versiful-front-end" # Replace with a unique bucket name
+  bucket        = "${var.environment}-${var.project_name}-front-end" # Replace with a unique bucket name
   force_destroy = true
 }
 
@@ -53,7 +53,7 @@ resource "null_resource" "deploy_react_project" {
       cd .. &&
       aws s3 sync versiful_frontend/dist s3://${aws_s3_bucket.react_static_site.bucket} --delete
       aws s3 sync versiful_frontend/dist s3://${aws_s3_bucket.react_static_site.bucket} --delete --exact-timestamps --metadata-directive REPLACE
-      aws s3 cp versiful_frontend/dist/index.html s3://${var.environment}-versiful-front-end/index.html --content-type "text/html"
+      aws s3 cp versiful_frontend/dist/index.html s3://${var.environment}-${var.project_name}-front-end/index.html --content-type "text/html"
 
     EOT
   }

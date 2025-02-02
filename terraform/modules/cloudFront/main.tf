@@ -8,7 +8,7 @@ resource "null_resource" "wait_for_acm_validation" {
     command = <<EOT
       CERT_ARN="${var.acm_certificate_arn}"
       while true; do
-        STATUS=$(aws acm describe-certificate --certificate-arn $CERT_ARN --region us-east-1 --query "Certificate.Status" --output text)
+        STATUS=$(aws acm describe-certificate --certificate-arn $CERT_ARN --region ${var.region} --query "Certificate.Status" --output text)
         echo "ACM Certificate Status: $STATUS"
         if [ "$STATUS" == "ISSUED" ]; then
           echo "Certificate validated!"

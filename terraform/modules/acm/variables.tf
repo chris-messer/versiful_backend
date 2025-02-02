@@ -4,6 +4,10 @@ variable "environment" {
   default     = "dev"
 }
 
+variable "project_name" {
+    description = "Name of the project"
+    }
+
 variable "domain_name" {
   description = "Domain name for the environment"
 }

@@ -8,6 +8,13 @@ variable "domain_name" {
   description = "Domain name for the environment"
 }
 
+variable "region" {
+  description = "Domain name for the environment"
+}
+
+variable "project_name" {
+    description = "Name of the project"
+    }
 
 variable "cdn_domain_name" {
   description = "Cloudfront distribution domain name"
