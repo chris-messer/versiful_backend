@@ -11,5 +11,6 @@ resource "aws_secretsmanager_secret_version" "secret_version" {
     "twilio_auth"         = var.twilio_auth,
     "twilio_account_sid"  = var.twilio_account_sid,
     "gpt"                 = var.gpt_api_key
+    "AWS_S3_IAM_SECRET"   = var.AWS_S3_IAM_SECRET
   })
 }

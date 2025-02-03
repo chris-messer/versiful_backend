@@ -27,3 +27,15 @@ variable "gpt_api_key" {
   type        = string
   sensitive   = true
 }
+
+variable "google_client_id" {
+  description = "Google client ID for cognito auth"
+  type        = string
+  sensitive   = true
+}
+
+variable "google_client_secret" {
+  description = "Google client secret for cognito auth"
+  type        = string
+  sensitive   = true
+}

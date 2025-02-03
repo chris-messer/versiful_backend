@@ -1,5 +1,5 @@
 locals {
-  api_domain = var.environment == "prod" ? "api.${var.domain_name}" : "${var.environment}.api.${var.domain_name}"
+  api_domain = var.environment == "prod" ? "api.${var.domain_name}" : "api.${var.environment}.${var.domain_name}"
 }
 
 # API Gateway v2 (HTTP API)

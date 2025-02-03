@@ -10,4 +10,3 @@ resource "aws_acm_certificate" "cognito_cert" {
     create_before_destroy = true
   }
 }
-

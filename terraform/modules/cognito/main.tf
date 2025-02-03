@@ -1,7 +1,7 @@
 locals {
   domain = var.environment == "prod" ? "www.${var.domain_name}" : "${var.environment}.${var.domain_name}"
   api_domain = var.environment == "prod" ? "api.${var.domain_name}" : "${var.environment}.api.${var.domain_name}"
-  auth_domain   = var.environment == "prod" ? "auth.${var.domain_name}" : "${var.environment}.auth.${var.domain_name}"
+  auth_domain   = var.environment == "prod" ? "auth.${var.domain_name}" : "auth.${var.environment}.${var.domain_name}"
 }
 
 # 1. Create a Cognito User Pool
@@ -95,7 +95,7 @@ resource "aws_cognito_user_pool_client" "user_pool_client" {
 
   # Redirect and logout URLs
   callback_urls = [
-    "https://${local.domain}" # TODO Replace with your frontend's callback URL
+    "https://${local.domain}/callback" # TODO Replace with your frontend's callback URL
   ]
 
   logout_urls = [

@@ -30,6 +30,7 @@ module "secrets" {
   twilio_auth        = var.twilio_auth
   twilio_account_sid = var.twilio_account_sid
   gpt_api_key        = var.gpt_api_key
+  AWS_S3_IAM_SECRET  = module.s3.AWS_S3_IAM_SECRET
 }
 
 module "s3" {
@@ -37,6 +38,7 @@ module "s3" {
   domain_name   = local.domain
   project_name  = local.project_name
   environment   = local.environment
+  cloudfront_cdn_arn = module.cloudFront.cloudfront_cdn_arn
     }
 
 module "acm" {
@@ -109,7 +111,7 @@ module "cognito" {
   region                        = local.region
   aws_route53_zone_id           = module.route53.aws_route53_zone_id
 
-  google_client_id = "your-google-client-id"
-  google_client_secret = "your-google-client-secret"
+  google_client_id = var.google_client_id
+  google_client_secret = var.google_client_secret
 
 }

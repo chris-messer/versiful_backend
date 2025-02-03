@@ -14,23 +14,23 @@ resource "aws_route53_record" "cognito_cert_validation" {
   ttl     = 300
 }
 
-#TODO move to shared resources
-resource "aws_route53_record" "cognito_parent_placeholder" {
-  zone_id = data.aws_route53_zone.zone.zone_id
-  name    = "auth.${var.domain_name}"
-  type    = "A"
-  ttl     = 300
-  records = ["192.0.2.1"] # Placeholder value
-}
+# #TODO move to shared resources
+# resource "aws_route53_record" "cognito_parent_placeholder" {
+#   zone_id = data.aws_route53_zone.zone.zone_id
+#   name    = "auth.${var.domain_name}"
+#   type    = "A"
+#   ttl     = 300
+#   records = ["192.0.2.1"] # Placeholder value
+# }
 
 
-resource "aws_route53_record" "cognito_placeholder" {
-  zone_id = data.aws_route53_zone.zone.zone_id
-  name    = local.auth_domain # e.g., dev.auth.versiful.io
-  type    = "A"
-  ttl     = 300
-  records = ["192.0.2.1"] # Placeholder value
-}
+# resource "aws_route53_record" "cognito_placeholder" {
+#   zone_id = data.aws_route53_zone.zone.zone_id
+#   name    = local.auth_domain # e.g., auth.dev.versiful.io
+#   type    = "A"
+#   ttl     = 300
+#   records = ["192.0.2.1"] # Placeholder value
+# }
 
 # Wait for validations
 resource "aws_acm_certificate_validation" "cognito_cert_validation" {

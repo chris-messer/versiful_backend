@@ -62,3 +62,46 @@ resource "null_resource" "deploy_react_project" {
 #   }
 
 }
+
+# Github Actions CI/CD setup
+# IAM User for GitHub Actions
+resource "aws_iam_user" "github_actions_user" {
+  name = "${var.environment}-${var.project_name}-github-actions-deploy"
+}
+
+# IAM Access Key for GitHub Actions
+resource "aws_iam_access_key" "github_access_key" {
+  user = aws_iam_user.github_actions_user.name
+}
+
+# IAM Policy for S3 Upload
+resource "aws_iam_policy" "s3_deploy_policy" {
+  name        = "S3DeployPolicy"
+  description = "Policy to allow GitHub Actions to deploy files to S3"
+  policy      = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
+      "Resource": [
+        "arn:aws:s3:::${aws_s3_bucket.react_static_site.id}",
+        "arn:aws:s3:::${aws_s3_bucket.react_static_site.id}/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "cloudfront:CreateInvalidation",
+      "Resource": "${var.cloudfront_cdn_arn}"
+    }
+  ]
+}
+EOF
+}
+
+# Attach Policy to IAM User
+resource "aws_iam_user_policy_attachment" "attach_s3_policy" {
+  user       = aws_iam_user.github_actions_user.name
+  policy_arn = aws_iam_policy.s3_deploy_policy.arn
+}
