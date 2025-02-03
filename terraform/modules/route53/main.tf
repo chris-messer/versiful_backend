@@ -1,6 +1,7 @@
 locals {
   domain = var.environment == "prod" ? "www.${var.domain_name}" : "${var.environment}.${var.domain_name}"
   api_domain = var.environment == "prod" ? "api.${var.domain_name}" : "${var.environment}.api.${var.domain_name}"
+  auth_domain   = var.environment == "prod" ? "auth.${var.domain_name}" : "${var.environment}.auth.${var.domain_name}"
 }
 
 

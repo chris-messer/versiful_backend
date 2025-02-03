@@ -57,8 +57,8 @@ resource "null_resource" "deploy_react_project" {
 
     EOT
   }
-  triggers = {
-    force_redeploy = timestamp()
-  }
+#   triggers = {
+#     force_redeploy = timestamp()
+#   }
 
 }

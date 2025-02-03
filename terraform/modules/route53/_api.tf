@@ -26,3 +26,9 @@ resource "aws_route53_record" "api_dns" {
     evaluate_target_health = false
   }
 }
+
+# # Wait for validations
+# resource "aws_acm_certificate_validation" "api_cert_validation" {
+#   certificate_arn         = var.acm_api_certificate_arn
+#   validation_record_fqdns = [for record in aws_route53_record.cognito_cert_validation : record.fqdn]
+# }

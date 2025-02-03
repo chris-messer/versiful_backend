@@ -7,9 +7,9 @@ resource "null_resource" "package_sms" {
     EOT
   }
 
-  triggers = {
-    force_redeploy = timestamp()
-  }
+#   triggers = {
+#     force_redeploy = timestamp()
+#   }
 }
 
 # Deploy SMS Lambda function

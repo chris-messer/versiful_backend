@@ -4,24 +4,32 @@ variable "environment" {
   default     = "dev"
 }
 
-variable "user_pool_name" {
-  description = "Name of the Cognito User Pool"
-  type        = string
-}
-
-variable "user_pool_domain" {
-  description = "Custom domain prefix for Cognito User Pool"
-  type        = string
-}
-
 variable "domain_name" {
   description = "Domain name for the environment"
 }
 
 variable "region" {
-  description = "Deployment region"
+  description = "Domain name for the environment"
 }
 
 variable "project_name" {
     description = "Name of the project"
+    }
+
+variable "acm_cognito_certificate_arn" {
+    description = "Cert ARN for auth domain"
+    }
+
+variable "google_client_id" {
+  description = "Google OAuth Client ID"
+  type        = string
+}
+
+variable "google_client_secret" {
+  description = "Google OAuth Client Secret"
+  type        = string
+}
+
+variable "aws_route53_zone_id" {
+    description = "Route 53 Zone ID"
     }

@@ -102,9 +102,9 @@ resource "null_resource" "package_layer" {
     EOT
   }
 
-  triggers = {
-    force_redeploy = timestamp()
-  }
+#   triggers = {
+#     force_redeploy = timestamp()
+#   }
 }
 resource "aws_lambda_layer_version" "shared_dependencies" {
   filename         = "${path.module}/../../../lambdas/layer/layer.zip"

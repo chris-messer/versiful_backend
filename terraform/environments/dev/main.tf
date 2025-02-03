@@ -70,10 +70,19 @@ module "cloudFront" {
 module "route53" {
   source  = "../../modules/route53"
   cdn_domain_name                   = module.cloudFront.cdn_domain_name
+
   domain_validation_options         = module.acm.domain_validation_options
   api_domain_validation_options     = module.acm.api_domain_validation_options
+  cognito_domain_validation_options = module.acm.cognito_domain_validation_options
+
+  acm_api_certificate_arn           = module.acm.acm_api_certificate_arn
+  acm_cognito_certificate_arn       = module.acm.acm_cognito_certificate_arn
+
+#   cognito_user_pool_custom_domain   = module.cognito.cognito_user_pool_custom_domain
+
   apiGateway_target_domain_name     = module.apiGateway.apiGateway_target_domain_name
   apiGateway_hosted_zone_id         = module.apiGateway.apiGateway_hosted_zone_id
+
   domain_name                       = local.domain
   project_name                      = local.project_name
   environment                       = local.environment
@@ -92,11 +101,15 @@ module "lambdas" {
     }
 
 module "cognito" {
-  source           = "../../modules/cognito"
-  user_pool_name   = "${local.environment}-${local.project_name}-user-pool"
-  user_pool_domain = "${local.environment}-${local.project_name}"
-  domain_name                 = local.domain
-  project_name                = local.project_name
-  environment                 = local.environment
-  region                      = local.region
+  source                        = "../../modules/cognito"
+  acm_cognito_certificate_arn   = module.acm.acm_cognito_certificate_arn
+  domain_name                   = local.domain
+  project_name                  = local.project_name
+  environment                   = local.environment
+  region                        = local.region
+  aws_route53_zone_id           = module.route53.aws_route53_zone_id
+
+  google_client_id = "your-google-client-id"
+  google_client_secret = "your-google-client-secret"
+
 }

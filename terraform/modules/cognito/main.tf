@@ -1,5 +1,12 @@
+locals {
+  domain = var.environment == "prod" ? "www.${var.domain_name}" : "${var.environment}.${var.domain_name}"
+  api_domain = var.environment == "prod" ? "api.${var.domain_name}" : "${var.environment}.api.${var.domain_name}"
+  auth_domain   = var.environment == "prod" ? "auth.${var.domain_name}" : "${var.environment}.auth.${var.domain_name}"
+}
+
+# 1. Create a Cognito User Pool
 resource "aws_cognito_user_pool" "user_pool" {
-  name = var.user_pool_name
+  name = "${var.environment}-${var.project_name}-user-pool"
 
   # Allow users to sign in with email
   username_attributes = ["email"]
@@ -17,21 +24,88 @@ resource "aws_cognito_user_pool" "user_pool" {
   mfa_configuration = "OFF"
 }
 
-resource "aws_cognito_user_pool_client" "user_pool_client" {
-  name         = "${var.user_pool_name}-client"
+# 2. Create a Cognito User Pool Domain (custom domain is optional)
+resource "aws_cognito_user_pool_domain" "aws_cognito_user_pool_domain" {
+  domain       = local.auth_domain
   user_pool_id = aws_cognito_user_pool.user_pool.id
+  certificate_arn = var.acm_cognito_certificate_arn
+}
 
-  # Allow username and password login
+
+# TODO complete this step, and ensure it happens after the cognito userpool gets created
+# # Step 2a: Update the Route 53 Record After Cognito Domain Creation
+# # Replace the placeholder with the actual CloudFront distribution
+# resource "aws_route53_record" "cognito_custom_domain" {
+#   zone_id = var.aws_route53_zone_id
+#   name    = local.auth_domain         # e.g., dev.auth.versiful.io
+#   type    = "CNAME"
+#   ttl     = 300
+#
+#   # Fetch the real CloudFront distribution associated with the Cognito domain
+#   records = [aws_cognito_user_pool_domain.custom_domain.cloudfront_distribution]
+#
+#   # Replace the placeholder
+#   depends_on = [aws_cognito_user_pool_domain.custom_domain]
+# }
+
+
+# 3. Add Google as an Identity Provider
+resource "aws_cognito_identity_provider" "google" {
+  user_pool_id  = aws_cognito_user_pool.user_pool.id
+  provider_name = "Google" # Required to match Cognito's naming convention
+
+  provider_type = "Google"
+
+  provider_details = {
+    client_id     = var.google_client_id       # Your Google OAuth Client ID
+    client_secret = var.google_client_secret   # Your Google OAuth Client Secret
+    authorize_scopes = "email profile openid"  # Scopes to request from Google
+  }
+
+  attribute_mapping = {
+    email = "email"
+    name  = "name"
+  }
+}
+
+# 4. Create a Cognito User Pool Client
+resource "aws_cognito_user_pool_client" "user_pool_client" {
+  user_pool_id = aws_cognito_user_pool.user_pool.id
+  name         = "${var.project_name}-client"
+
+  # Allow OAuth flows
+  allowed_oauth_flows_user_pool_client = true
+  allowed_oauth_flows = [
+    "code",       # Authorization Code Flow
+    "implicit"    # Optional, for frontend apps without a backend
+  ]
+
+  # Scopes for email, profile, and OpenID Connect
+  allowed_oauth_scopes = [
+    "email",
+    "openid",
+    "profile"
+  ]
+
+  # Support both Cognito's built-in auth and Google OAuth
+  supported_identity_providers = [
+    "COGNITO",  # For email/password login
+    "Google"    # For Google OAuth
+  ]
+
+  # Redirect and logout URLs
+  callback_urls = [
+    "https://${local.domain}" # TODO Replace with your frontend's callback URL
+  ]
+
+  logout_urls = [
+    "https://${local.domain}/logout" # TODO Replace with your frontend's logout URL
+  ]
+
+  # Explicit auth flows for email/password login
   explicit_auth_flows = [
     "ALLOW_USER_PASSWORD_AUTH",
     "ALLOW_REFRESH_TOKEN_AUTH",
+    "ALLOW_CUSTOM_AUTH"
   ]
-
-  # Prevent client secret for browser-based apps
-  generate_secret = false
-}
-
-resource "aws_cognito_user_pool_domain" "user_pool_domain" {
-  domain       = var.user_pool_domain
-  user_pool_id = aws_cognito_user_pool.user_pool.id
 }
