@@ -29,3 +29,7 @@ variable "secret_arn" {
 variable "apiGateway_lambda_api_id" {
   description = "API Gateway Lambda API ID"
 }
+
+variable "users_dynamodb_arn" {
+    description = "ARN of the dynamodb table for users"
+    }

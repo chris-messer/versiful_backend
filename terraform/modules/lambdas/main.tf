@@ -18,7 +18,24 @@ resource "aws_iam_role" "lambda_exec_role" {
   })
 }
 
+# Grant access to dynamodb
+resource "aws_iam_policy" "dynamodb_access" {
+  name        = "${var.environment}-${var.project_name}-dynamodb_access"
+  description = "Allow Lambda to access DynamoDB"
 
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem"]
+        Resource = var.users_dynamodb_arn
+      }
+    ]
+  })
+}
+
+#TODO add in project name to the role name
 # Grant Lambdas access to secret manager
 resource "aws_iam_policy" "secrets_manager_policy" {
   name        = "${var.environment}-LambdaSecretsManagerPolicy"
@@ -52,7 +69,14 @@ resource "aws_iam_role_policy_attachment" "attach_policy" {
   policy_arn = aws_iam_policy.secrets_manager_policy.arn
 }
 
+# Attach secrets policy to role
+resource "aws_iam_role_policy_attachment" "attach_dynamodb_policy" {
+  role       = aws_iam_role.lambda_exec_role.name
+  policy_arn = aws_iam_policy.dynamodb_access.arn
+}
+
 # IAM Role for API Gateway CloudWatch Logs
+#TODO add in project name to the role name
 resource "aws_iam_role" "api_gateway_cloudwatch_role" {
   name = "${var.environment}-APIGatewayCloudWatchLogsRole"
   tags = {
@@ -72,6 +96,7 @@ resource "aws_iam_role" "api_gateway_cloudwatch_role" {
   })
 }
 
+#TODO add in project name to the role name
 resource "aws_iam_policy_attachment" "api_gateway_logs_policy" {
   name       = "${var.environment}-APIGatewayLogsPolicyAttachment"
   roles      = [aws_iam_role.api_gateway_cloudwatch_role.name]
@@ -84,6 +109,7 @@ resource "aws_api_gateway_account" "account_settings" {
 }
 
 # CloudWatch Log Group for API Gateway
+#TODO add in project name to the role name
 resource "aws_cloudwatch_log_group" "api_gateway_log_group" {
   name              = "/aws/api-gateway/${var.environment}-stage"
   retention_in_days = 7

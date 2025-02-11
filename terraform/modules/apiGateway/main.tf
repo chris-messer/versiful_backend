@@ -6,12 +6,18 @@ locals {
 resource "aws_apigatewayv2_api" "lambda_api" {
   name          = "${var.environment}-${var.project_name}-gateway"
   protocol_type = "HTTP"
-}
 
+  cors_configuration {  # Correct indentation
+    allow_origins = ["*"]
+    allow_methods = ["OPTIONS", "GET", "POST", "PUT", "DELETE"]
+    allow_headers = ["Content-Type", "Authorization"]
+  }
+}
 
 # Deploy API Gateway Stage (Auto Deploy Enabled)
 resource "aws_apigatewayv2_stage" "lambda_stage" {
   api_id      = aws_apigatewayv2_api.lambda_api.id
+  depends_on = [aws_apigatewayv2_api.lambda_api]
   name        = var.environment
   auto_deploy = true
 
@@ -34,12 +40,11 @@ resource "aws_apigatewayv2_stage" "lambda_stage" {
       integrationEndpoint  = "$context.integration.integrationId"
     })
   }
-
 }
 
 # Wait for ACM Certificate Validation Before Proceeding
 resource "null_resource" "wait_for_acm_validation" {
-  depends_on = [aws_apigatewayv2_api.lambda_api, ]
+  depends_on = [aws_apigatewayv2_api.lambda_api]
   provisioner "local-exec" {
     command = <<EOT
       CERT_ARN="${var.acm_api_certificate_arn}"
@@ -64,7 +69,8 @@ resource "null_resource" "wait_for_acm_validation" {
 # Custom Domain for API Gateway
 resource "aws_apigatewayv2_domain_name" "api_domain" {
   domain_name = local.api_domain
-  depends_on = [null_resource.wait_for_acm_validation]
+  depends_on  = [null_resource.wait_for_acm_validation]
+
   domain_name_configuration {
     certificate_arn = var.acm_api_certificate_arn
     endpoint_type   = "REGIONAL"

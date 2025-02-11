@@ -96,6 +96,7 @@ module "lambdas" {
     apiGateway_execution_arn    = module.apiGateway.apiGateway_execution_arn
     secret_arn                  = module.secrets.secret_arn
     apiGateway_lambda_api_id    = module.apiGateway.apiGateway_lambda_api_id
+    users_dynamodb_arn          = module.dynamodb.users_dynamodb_arn
     domain_name                 = local.domain
     project_name                = local.project_name
     environment                 = local.environment
@@ -115,3 +116,11 @@ module "cognito" {
   google_client_secret = var.google_client_secret
 
 }
+
+module "dynamodb" {
+  source                        = "../../modules/dynamodb"
+  domain_name                   = local.domain
+  project_name                  = local.project_name
+  environment                   = local.environment
+  region                        = local.region
+  }

@@ -8,3 +8,11 @@ def test_lambdas():
     from lambdas.sms.sms_handler import handler
     t = handler(event, context)
     assert True
+
+def test_users():
+    event = ''
+    context = ''
+
+    from lambdas.users.users_handler import handler
+    t = handler(event, context)
+    assert True

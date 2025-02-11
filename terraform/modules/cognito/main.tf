@@ -95,7 +95,8 @@ resource "aws_cognito_user_pool_client" "user_pool_client" {
 
   # Redirect and logout URLs
   callback_urls = [
-    "https://${local.domain}/callback" # TODO Replace with your frontend's callback URL
+    "https://${local.domain}/callback",
+    "http://localhost:5173/callback"
   ]
 
   logout_urls = [
