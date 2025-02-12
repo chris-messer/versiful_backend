@@ -33,20 +33,20 @@ resource "aws_cognito_user_pool_domain" "aws_cognito_user_pool_domain" {
 
 
 # TODO complete this step, and ensure it happens after the cognito userpool gets created
-# # Step 2a: Update the Route 53 Record After Cognito Domain Creation
-# # Replace the placeholder with the actual CloudFront distribution
-# resource "aws_route53_record" "cognito_custom_domain" {
-#   zone_id = var.aws_route53_zone_id
-#   name    = local.auth_domain         # e.g., dev.auth.versiful.io
-#   type    = "CNAME"
-#   ttl     = 300
-#
-#   # Fetch the real CloudFront distribution associated with the Cognito domain
-#   records = [aws_cognito_user_pool_domain.custom_domain.cloudfront_distribution]
-#
-#   # Replace the placeholder
-#   depends_on = [aws_cognito_user_pool_domain.custom_domain]
-# }
+# Step 2a: Update the Route 53 Record After Cognito Domain Creation
+# Replace the placeholder with the actual CloudFront distribution
+resource "aws_route53_record" "cognito_custom_domain" {
+  zone_id = var.aws_route53_zone_id
+  name    = local.auth_domain         # e.g., dev.auth.versiful.io
+  type    = "CNAME"
+  ttl     = 300
+
+  # Fetch the real CloudFront distribution associated with the Cognito domain
+  records = [aws_cognito_user_pool_domain.aws_cognito_user_pool_domain.cloudfront_distribution]
+
+  # Replace the placeholder
+  depends_on = [aws_cognito_user_pool_domain.aws_cognito_user_pool_domain]
+}
 
 
 # 3. Add Google as an Identity Provider
