@@ -1,8 +1,12 @@
 import json
 import boto3
+import os
 
 dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table("dev-versiful-users")
+env = os.environ["ENVIRONMENT"]
+project_name = os.environ["PROJECT_NAME"]
+table_name = f"{env}-{project_name}-users"
+table = dynamodb.Table(table_name)
 
 
 def create_user(body, headers):

@@ -56,6 +56,7 @@ module apiGateway {
     project_name            = local.project_name
     environment             = local.environment
     region                  = local.region
+    allowed_cors_origins    = var.allowed_cors_origins
     }
 
 module "cloudFront" {
@@ -101,6 +102,8 @@ module "lambdas" {
     project_name                = local.project_name
     environment                 = local.environment
     region                      = local.region
+    user_pool_id                = module.cognito.user_pool_id
+    user_pool_client_id         = module.cognito.user_pool_client_id
     }
 
 module "cognito" {

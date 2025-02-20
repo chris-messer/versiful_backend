@@ -39,3 +39,8 @@ variable "google_client_secret" {
   type        = string
   sensitive   = true
 }
+
+variable "allowed_cors_origins" {
+  description = "list of origins available for CORS requests"
+  type        = list(string)
+}

@@ -80,6 +80,8 @@ resource "aws_cognito_user_pool_client" "user_pool_client" {
     "implicit"    # Optional, for frontend apps without a backend
   ]
 
+
+
   # Scopes for email, profile, and OpenID Connect
   allowed_oauth_scopes = [
     "email",
@@ -107,6 +109,8 @@ resource "aws_cognito_user_pool_client" "user_pool_client" {
   explicit_auth_flows = [
     "ALLOW_USER_PASSWORD_AUTH",
     "ALLOW_REFRESH_TOKEN_AUTH",
-    "ALLOW_CUSTOM_AUTH"
+    "ALLOW_CUSTOM_AUTH",
+    "ALLOW_USER_SRP_AUTH",          # Enables Secure Remote Password (SRP) authentication
+    "ALLOW_REFRESH_TOKEN_AUTH"
   ]
 }

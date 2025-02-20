@@ -69,7 +69,7 @@ resource "aws_iam_role_policy_attachment" "attach_policy" {
   policy_arn = aws_iam_policy.secrets_manager_policy.arn
 }
 
-# Attach secrets policy to role
+# Attach dynamodb policy to role
 resource "aws_iam_role_policy_attachment" "attach_dynamodb_policy" {
   role       = aws_iam_role.lambda_exec_role.name
   policy_arn = aws_iam_policy.dynamodb_access.arn

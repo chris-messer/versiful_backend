@@ -24,3 +24,7 @@ variable "acm_api_certificate_arn" {
 variable "api_acm_validation" {
     description = "Forces a depenency for DNS records to create before waiting for validation"
     }
+
+variable "allowed_cors_origins" {
+    description = "Allowed origins for CORS requests"
+    }

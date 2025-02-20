@@ -8,9 +8,10 @@ resource "aws_apigatewayv2_api" "lambda_api" {
   protocol_type = "HTTP"
 
   cors_configuration {  # Correct indentation
-    allow_origins = ["*"]
+    allow_origins = var.allowed_cors_origins
     allow_methods = ["OPTIONS", "GET", "POST", "PUT", "DELETE"]
     allow_headers = ["Content-Type", "Authorization"]
+    allow_credentials = true
   }
 }
 

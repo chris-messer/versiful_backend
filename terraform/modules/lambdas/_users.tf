@@ -26,7 +26,8 @@ resource "aws_lambda_function" "users_function" {
 
   environment {
     variables = {
-      ENV_VAR = "users_value"
+      ENVIRONMENT = var.environment
+      PROJECT_NAME = var.project_name
     }
 
   }
