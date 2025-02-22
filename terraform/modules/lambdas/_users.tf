@@ -57,13 +57,39 @@ resource "aws_apigatewayv2_integration" "lambda_users_integration" {
 }
 
 # Define API Gateway Route
-resource "aws_apigatewayv2_route" "lambda_users_route" {
+resource "aws_apigatewayv2_route" "lambda_get_users_route" {
   api_id    = var.apiGateway_lambda_api_id
-  route_key = "ANY /users"
+  route_key = "GET /users"
   target    = "integrations/${aws_apigatewayv2_integration.lambda_users_integration.id}"
+  authorization_type = "CUSTOM"
+  authorizer_id      = var.jwt_auth_id
 }
-resource "aws_apigatewayv2_route" "options_users" {
+
+resource "aws_apigatewayv2_route" "lambda_post_users_route" {
   api_id    = var.apiGateway_lambda_api_id
-  route_key = "OPTIONS /users"
+  route_key = "POST /users"
   target    = "integrations/${aws_apigatewayv2_integration.lambda_users_integration.id}"
+  authorization_type = "CUSTOM"
+  authorizer_id      = var.jwt_auth_id
 }
+
+resource "aws_apigatewayv2_route" "lambda_put_users_route" {
+  api_id    = var.apiGateway_lambda_api_id
+  route_key = "PUT /users"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_users_integration.id}"
+  authorization_type = "CUSTOM"
+  authorizer_id      = var.jwt_auth_id
+}
+
+resource "aws_apigatewayv2_route" "lambda_delete_users_route" {
+  api_id    = var.apiGateway_lambda_api_id
+  route_key = "DELETE /users"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_users_integration.id}"
+  authorization_type = "CUSTOM"
+  authorizer_id      = var.jwt_auth_id
+}
+# resource "aws_apigatewayv2_route" "options_users" {
+#   api_id    = var.apiGateway_lambda_api_id
+#   route_key = "OPTIONS /users"
+#   target    = "integrations/${aws_apigatewayv2_integration.lambda_users_integration.id}"
+# }

@@ -19,32 +19,19 @@ if not logger.handlers:
     logger.addHandler(handler)
 
 def handler(event, context):
-    headers = {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "OPTIONS, GET, POST, PUT, DELETE",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization"
-    }
-    logger.info('Received event: %s', event)
-    # Handle CORS preflight requests
-    if event["httpMethod"] == "OPTIONS":
-        return {
-            "statusCode": 200,
-            "headers": headers,
-            "body": json.dumps({})
-        }
 
     path = event.get("path", "")
     method = event.get("httpMethod", "")
-    body = json.loads(event.get("body", "{}"))
+
 
     try:
 
         if method == "GET":
             if path.endswith("/users"):
-                return get_user_profile(body, headers)
+                return get_user_profile(event, {})
         if method == "POST":
             if path.endswith("/users"):
-                r = create_user(body, headers)
+                r = create_user(event, {})
                 logger.info('Response: %s', event)
                 return r
 
@@ -58,12 +45,10 @@ def handler(event, context):
         else:
             return {
                 "statusCode": 404,
-                "headers": headers,
                 "body": json.dumps({"error": "Invalid route"})
             }
     except Exception as e:
         return {
             "statusCode": 500,
-            "headers": headers,
             "body": json.dumps({"error": str(e)})
         }

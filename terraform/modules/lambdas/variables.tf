@@ -41,3 +41,7 @@ variable "user_pool_client_id" {
 variable "user_pool_id" {
     description = "Cognito USER_POOL_ID"
     }
+
+variable "jwt_auth_id" {
+    description = "JWT auth ID that is attached to the API Gateway"
+    }

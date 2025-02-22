@@ -84,8 +84,65 @@ resource "aws_apigatewayv2_route" "lambda_auth_delete_route" {
   target    = "integrations/${aws_apigatewayv2_integration.lambda_auth_integration.id}"
 }
 
-# resource "aws_apigatewayv2_route" "options_auth" {
-#   api_id    = var.apiGateway_lambda_api_id
-#   route_key = "OPTIONS /auth/{proxy+}"
-#   target    = "integrations/${aws_apigatewayv2_integration.lambda_auth_integration.id}"
-# }
+############### JWT Authorizer ###############
+ # Package the Lambda function
+resource "null_resource" "package_authorizer" {
+  provisioner "local-exec" {
+    command = <<EOT
+      cd ${path.module}/../../../lambdas/authorizer && \
+      [ -f auth.zip ] && rm authorizer.zip
+      zip -r authorizer.zip .
+    EOT
+  }
+
+  triggers = {
+    force_redeploy = timestamp()
+  }
+}
+
+# Deploy Lambda function
+resource "aws_lambda_function" "jwt_authorizer" {
+  function_name = "${var.environment}-${var.project_name}-jwt_authorizer"
+  handler       = "jwt_authorizer.handler"
+  runtime       = "python3.9"
+  role          = aws_iam_role.lambda_exec_role.arn
+  filename      = "${path.module}/../../../lambdas/authorizer/authorizer.zip"
+  layers = [aws_lambda_layer_version.shared_dependencies.arn, "arn:aws:lambda:us-east-1:017000801446:layer:AWSLambdaPowertoolsPythonV3-python39-x86_64:6"]
+  depends_on = [null_resource.package_authorizer]
+  timeout       = 30
+
+  environment {
+    variables = {
+      ENVIRONMENT = var.environment
+      PROJECT_NAME = var.project_name
+      CLIENT_ID = var.user_pool_client_id
+      USER_POOL_ID = var.user_pool_id
+      DOMAIN = var.domain_name
+      REGION = var.region
+    }
+
+  }
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
+# Lambda Permissions
+resource "aws_lambda_permission" "authorizer_permission" {
+  statement_id  = "AllowAPIGatewayInvokeSms"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.jwt_authorizer.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${var.apiGateway_execution_arn}/*/*"
+  lifecycle {
+    replace_triggered_by = [aws_lambda_function.jwt_authorizer.id]
+  }
+}
+
+# Integrate Lambda with API Gateway
+resource "aws_apigatewayv2_integration" "lambda_authorizer_integration" {
+  api_id           = var.apiGateway_lambda_api_id
+  integration_type = "AWS_PROXY"
+  integration_uri  = aws_lambda_function.jwt_authorizer.invoke_arn
+}

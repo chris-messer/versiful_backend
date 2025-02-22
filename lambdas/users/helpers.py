@@ -9,8 +9,9 @@ table_name = f"{env}-{project_name}-users"
 table = dynamodb.Table(table_name)
 
 
-def create_user(body, headers):
-    user_id = body.get("userId")
+def create_user(event, headers):
+    body = json.loads(event.get("body", "{}"))
+    user_id = event["requestContext"]["authorizer"]["userId"]
     if not user_id:
         return {"statusCode": 400, "headers": headers, "body": json.dumps({"error": "Missing userId"})}
 
@@ -22,8 +23,8 @@ def create_user(body, headers):
     return {"statusCode": 200, "headers": headers, "body": json.dumps({"exists": False})}
 
 
-def get_user_profile(body, headers):
-    user_id = body.get("userId")
+def get_user_profile(event, headers):
+    user_id = event["requestContext"]["authorizer"]["userId"]
     if not user_id:
         return {"statusCode": 400, "headers": headers, "body": json.dumps({"error": "Missing userId"})}
 

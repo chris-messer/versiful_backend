@@ -57,6 +57,7 @@ module apiGateway {
     environment             = local.environment
     region                  = local.region
     allowed_cors_origins    = var.allowed_cors_origins
+    authorizer_uri          = module.lambdas.authorizer_uri
     }
 
 module "cloudFront" {
@@ -104,6 +105,7 @@ module "lambdas" {
     region                      = local.region
     user_pool_id                = module.cognito.user_pool_id
     user_pool_client_id         = module.cognito.user_pool_client_id
+    jwt_auth_id                 = module.apiGateway.jwt_auth_id
     }
 
 module "cognito" {

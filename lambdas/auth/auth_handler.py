@@ -103,21 +103,21 @@ def handle_auth(event):
         refresh_token = tokens.get("refresh_token")  # Might not always be present
 
         # Format Set-Cookie headers correctly
+        SameSite = "None; " if env == 'dev' else 'Strict'
         cookie_headers = [
-            f"id_token={id_token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age={60 * 60}",
-            f"access_token={access_token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age={60 * 60}"
+            f"id_token={id_token}; HttpOnly; Secure; SameSite={SameSite}; Path=/; Max-Age={60 * 60}",
+            f"access_token={access_token}; HttpOnly; Secure; SameSite={SameSite}; Path=/; Max-Age={60 * 60}"
         ]
 
         if refresh_token:
             cookie_headers.append(
-                f"refresh_token={refresh_token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age={60 * 60 * 24 * 30}"
+                f"refresh_token={refresh_token}; HttpOnly; Secure; SameSite={SameSite}; Path=/; Max-Age={60 * 60 * 24 * 30}"
             )  # 30 days
 
         return {
             'statusCode': 200,
-            'headers': {
-
-                'Set-Cookie': ", ".join(cookie_headers)  # ✅ Correct format
+            'multiValueHeaders': {
+                'Set-Cookie': cookie_headers
             },
             'body': json.dumps({'message': 'Authentication successful'})
         }
@@ -150,17 +150,17 @@ def handle_refresh(event):
             new_access_token = auth_result['AccessToken']
 
             # Update tokens in cookies
+            SameSite = "None; " if env == 'dev' else 'Strict'
             cookies = [
-                f'id_token={new_id_token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age={60 * 60}',
-                f'access_token={new_access_token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age={60 * 60}'
+                f'id_token={new_id_token}; HttpOnly; Secure; SameSite={SameSite}; Path=/; Max-Age={60 * 60}',
+                f'access_token={new_access_token}; HttpOnly; Secure; SameSite={SameSite}; Path=/; Max-Age={60 * 60}'
             ]
 
             return {
                 'statusCode': 200,
-                'headers': {
-                    **get_cors_headers(),
-                    'Set-Cookie': cookies
-                },
+                'multiValueHeaders': {
+                'Set-Cookie': cookies
+            },
                 'body': json.dumps({'message': 'Token refresh successful'})
             }
 
@@ -175,16 +175,16 @@ def handle_refresh(event):
 def handle_logout(event):
     try:
         # Clear all auth cookies
+        SameSite = "None; " if env == 'dev' else 'Strict'
         cookies = [
-            'id_token=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0',
-            'access_token=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0',
-            'refresh_token=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0'
+            f'id_token=; HttpOnly; Secure; SameSite={SameSite}; Path=/; Max-Age=0',
+            f'access_token=; HttpOnly; Secure; SameSite={SameSite}; Path=/; Max-Age=0',
+            f'refresh_token=; HttpOnly; Secure; SameSite={SameSite}; Path=/; Max-Age=0'
         ]
 
         return {
             'statusCode': 200,
-            'headers': {
-                **get_cors_headers(),
+            'multiValueHeaders': {
                 'Set-Cookie': cookies
             },
             'body': json.dumps({'message': 'Logout successful'})

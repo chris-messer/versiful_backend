@@ -85,3 +85,14 @@ resource "aws_apigatewayv2_api_mapping" "api_mapping" {
   domain_name = aws_apigatewayv2_domain_name.api_domain.id
   stage       = aws_apigatewayv2_stage.lambda_stage.id
 }
+
+# JWT Authorizer for secure auth
+resource "aws_apigatewayv2_authorizer" "jwt_auth" {
+  api_id          = aws_apigatewayv2_api.lambda_api.id
+  name            = "JWTAuthorizer"
+  authorizer_type = "REQUEST"
+  authorizer_uri  = var.authorizer_uri
+  identity_sources = ["$request.header.cookie"]
+  authorizer_payload_format_version = "2.0"
+  enable_simple_responses           = true
+}
