@@ -23,7 +23,7 @@ def handler(event, context):
     path = event.get("path", "")
     method = event.get("httpMethod", "")
 
-
+    logger.info('Response: %s', event)
     try:
 
         if method == "GET":
@@ -32,8 +32,14 @@ def handler(event, context):
         if method == "POST":
             if path.endswith("/users"):
                 r = create_user(event, {})
-                logger.info('Response: %s', event)
+
                 return r
+        if method == "PUT":
+            if path.endswith("/users"):
+                r = update_user_settings(event, {})
+                logger.info(r)
+                return r
+
 
         #
         # if path.endswith("/users") and method == "POST":
@@ -48,6 +54,7 @@ def handler(event, context):
                 "body": json.dumps({"error": "Invalid route"})
             }
     except Exception as e:
+        logger.error(e)
         return {
             "statusCode": 500,
             "body": json.dumps({"error": str(e)})

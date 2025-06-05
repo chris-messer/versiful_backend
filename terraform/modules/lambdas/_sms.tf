@@ -1,15 +1,21 @@
 # Package the SMS Lambda function
-resource "null_resource" "package_sms" {
-  provisioner "local-exec" {
-    command = <<EOT
-      cd ${path.module}/../../../lambdas/sms && \
-      zip -r sms.zip .
-    EOT
-  }
+# resource "null_resource" "package_sms" {
+#   provisioner "local-exec" {
+#     command = <<EOT
+#       cd ${path.module}/../../../lambdas/sms && \
+#       zip -r sms.zip .
+#     EOT
+#   }
+#
+#   triggers = {
+#     force_redeploy = timestamp()
+#   }
+# }
 
-  triggers = {
-    force_redeploy = timestamp()
-  }
+data "archive_file" "sms_zip" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../../lambdas/sms"
+  output_path = "${path.module}/../../../lambdas/sms/sms.zip"
 }
 
 # Deploy SMS Lambda function
@@ -18,9 +24,10 @@ resource "aws_lambda_function" "sms_function" {
   handler       = "sms_handler.handler"
   runtime       = "python3.9"
   role          = aws_iam_role.lambda_exec_role.arn
-  filename      = "${path.module}/../../../lambdas/sms/sms.zip"
+  filename      = data.archive_file.sms_zip.output_path
+  source_code_hash = data.archive_file.sms_zip.output_base64sha256
   layers = [aws_lambda_layer_version.shared_dependencies.arn, "arn:aws:lambda:us-east-1:017000801446:layer:AWSLambdaPowertoolsPythonV3-python39-x86_64:6"]
-  depends_on = [null_resource.package_sms]
+  # depends_on = [null_resource.package_sms]
   timeout       = 30
 
   environment {

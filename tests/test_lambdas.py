@@ -10,9 +10,23 @@ def test_lambdas():
     assert True
 
 def test_users():
-    event = ''
+    event =
     context = ''
 
     from lambdas.users.users_handler import handler
     t = handler(event, context)
     assert True
+
+def test_auth():
+    event = {'version': '1.0', 'resource': '/auth/{proxy+}', 'path': '/auth/callback', 'httpMethod': 'POST', 'headers': {'Content-Length': '94', 'Content-Type': 'application/json', 'Host': 'api.dev.versiful.io', 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36', 'X-Amzn-Trace-Id': 'Root=1-67b73f07-5a876e9422543fa570b442e6', 'X-Forwarded-For': '134.238.163.206', 'X-Forwarded-Port': '443', 'X-Forwarded-Proto': 'https', 'accept': '*/*', 'accept-encoding': 'gzip, deflate, br, zstd', 'accept-language': 'en-US,en;q=0.9', 'origin': 'http://localhost:5173', 'priority': 'u=1, i', 'referer': 'http://localhost:5173/', 'sec-ch-ua': '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"', 'sec-ch-ua-mobile': '?0', 'sec-ch-ua-platform': '"macOS"', 'sec-fetch-dest': 'empty', 'sec-fetch-mode': 'cors', 'sec-fetch-site': 'cross-site', 'sec-fetch-storage-access': 'active'}, 'multiValueHeaders': {'Content-Length': ['94'], 'Content-Type': ['application/json'], 'Host': ['api.dev.versiful.io'], 'User-Agent': ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'], 'X-Amzn-Trace-Id': ['Root=1-67b73f07-5a876e9422543fa570b442e6'], 'X-Forwarded-For': ['134.238.163.206'], 'X-Forwarded-Port': ['443'], 'X-Forwarded-Proto': ['https'], 'accept': ['*/*'], 'accept-encoding': ['gzip, deflate, br, zstd'], 'accept-language': ['en-US,en;q=0.9'], 'origin': ['http://localhost:5173'], 'priority': ['u=1, i'], 'referer': ['http://localhost:5173/'], 'sec-ch-ua': ['"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"'], 'sec-ch-ua-mobile': ['?0'], 'sec-ch-ua-platform': ['"macOS"'], 'sec-fetch-dest': ['empty'], 'sec-fetch-mode': ['cors'], 'sec-fetch-site': ['cross-site'], 'sec-fetch-storage-access': ['active']}, 'queryStringParameters': None, 'multiValueQueryStringParameters': None, 'requestContext': {'accountId': '018908982481', 'apiId': 'w65varg202', 'domainName': 'api.dev.versiful.io', 'domainPrefix': 'api', 'extendedRequestId': 'GSbJPjafIAMEMQw=', 'httpMethod': 'POST', 'identity': {'accessKey': None, 'accountId': None, 'caller': None, 'cognitoAmr': None, 'cognitoAuthenticationProvider': None, 'cognitoAuthenticationType': None, 'cognitoIdentityId': None, 'cognitoIdentityPoolId': None, 'principalOrgId': None, 'sourceIp': '134.238.163.206', 'user': None, 'userAgent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36', 'userArn': None}, 'path': '/dev/auth/callback', 'protocol': 'HTTP/1.1', 'requestId': 'GSbJPjafIAMEMQw=', 'requestTime': '20/Feb/2025:14:41:11 +0000', 'requestTimeEpoch': 1740062471508, 'resourceId': 'ANY /auth/{proxy+}', 'resourcePath': '/auth/{proxy+}', 'stage': 'dev'}, 'pathParameters': {'proxy': 'callback'}, 'stageVariables': None, 'body': '{"code":"f99a6174-d054-4727-a099-287799da99bb","redirectUri":"http://localhost:5173/callback"}', 'isBase64Encoded': False}
+    context = ''
+    from lambdas.auth.auth_handler import handler
+    t = handler(event, context)
+
+
+def test_jwt_auth():
+    event =
+    context = ''
+    from lambdas.authorizer.jwt_authorizer import handler
+    t = handler(event, context)
+

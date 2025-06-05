@@ -28,7 +28,7 @@ resource "aws_iam_policy" "dynamodb_access" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem"]
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"]
         Resource = var.users_dynamodb_arn
       }
     ]
