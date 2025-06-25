@@ -1,16 +1,22 @@
 # Package the SMS Lambda function
-resource "null_resource" "package_users" {
-  provisioner "local-exec" {
-    command = <<EOT
-      cd ${path.module}/../../../lambdas/users && \
-      [ -f users.zip ] && rm users.zip
-      zip -r users.zip .
-    EOT
-  }
+# resource "null_resource" "package_users" {
+#   provisioner "local-exec" {
+#     command = <<EOT
+#       cd ${path.module}/../../../lambdas/users && \
+#       [ -f users.zip ] && rm users.zip
+#       zip -r users.zip .
+#     EOT
+#   }
+#
+#   triggers = {
+#     force_redeploy = timestamp()
+#   }
+# }
 
-  triggers = {
-    force_redeploy = timestamp()
-  }
+data "archive_file" "users_zip" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../../lambdas/users"
+  output_path = "${path.module}/../../../lambdas/users/users.zip"
 }
 
 # Deploy users Lambda function
@@ -19,9 +25,10 @@ resource "aws_lambda_function" "users_function" {
   handler       = "users_handler.handler"
   runtime       = "python3.9"
   role          = aws_iam_role.lambda_exec_role.arn
-  filename      = "${path.module}/../../../lambdas/users/users.zip"
+  filename         = data.archive_file.users_zip.output_path
+  source_code_hash = data.archive_file.users_zip.output_base64sha256
   layers = [aws_lambda_layer_version.shared_dependencies.arn, "arn:aws:lambda:us-east-1:017000801446:layer:AWSLambdaPowertoolsPythonV3-python39-x86_64:6"]
-  depends_on = [null_resource.package_users]
+  # depends_on = [null_resource.package_users]
   timeout       = 30
 
   environment {

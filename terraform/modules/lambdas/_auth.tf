@@ -1,16 +1,22 @@
 # Package the Lambda function
-resource "null_resource" "package_auth" {
-  provisioner "local-exec" {
-    command = <<EOT
-      cd ${path.module}/../../../lambdas/auth && \
-      [ -f auth.zip ] && rm auth.zip
-      zip -r auth.zip .
-    EOT
-  }
+# resource "null_resource" "package_auth" {
+#   provisioner "local-exec" {
+#     command = <<EOT
+#       cd ${path.module}/../../../lambdas/auth && \
+#       [ -f auth.zip ] && rm auth.zip
+#       zip -r auth.zip .
+#     EOT
+#   }
+#
+#   triggers = {
+#     force_redeploy = timestamp()
+#   }
+# }
 
-  triggers = {
-    force_redeploy = timestamp()
-  }
+data "archive_file" "auth_zip" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../../lambdas/auth"
+  output_path = "${path.module}/../../../lambdas/auth/auth.zip"
 }
 
 # Deploy Lambda function
@@ -19,9 +25,10 @@ resource "aws_lambda_function" "auth_function" {
   handler       = "auth_handler.handler"
   runtime       = "python3.9"
   role          = aws_iam_role.lambda_exec_role.arn
-  filename      = "${path.module}/../../../lambdas/auth/auth.zip"
+  filename         = data.archive_file.auth_zip.output_path
+  source_code_hash = data.archive_file.auth_zip.output_base64sha256
   layers = [aws_lambda_layer_version.shared_dependencies.arn, "arn:aws:lambda:us-east-1:017000801446:layer:AWSLambdaPowertoolsPythonV3-python39-x86_64:6"]
-  depends_on = [null_resource.package_auth]
+  # depends_on = [null_resource.package_auth]
   timeout       = 30
 
   environment {
@@ -86,18 +93,24 @@ resource "aws_apigatewayv2_route" "lambda_auth_delete_route" {
 
 ############### JWT Authorizer ###############
  # Package the Lambda function
-resource "null_resource" "package_authorizer" {
-  provisioner "local-exec" {
-    command = <<EOT
-      cd ${path.module}/../../../lambdas/authorizer && \
-      [ -f auth.zip ] && rm authorizer.zip
-      zip -r authorizer.zip .
-    EOT
-  }
+# resource "null_resource" "package_authorizer" {
+#   provisioner "local-exec" {
+#     command = <<EOT
+#       cd ${path.module}/../../../lambdas/authorizer && \
+#       [ -f auth.zip ] && rm authorizer.zip
+#       zip -r authorizer.zip .
+#     EOT
+#   }
+#
+#   triggers = {
+#     force_redeploy = timestamp()
+#   }
+# }
 
-  triggers = {
-    force_redeploy = timestamp()
-  }
+data "archive_file" "jwt_authorizer_zip" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../../lambdas/authorizer"
+  output_path = "${path.module}/../../../lambdas/authorizer/authorizer.zip"
 }
 
 # Deploy Lambda function
@@ -106,9 +119,10 @@ resource "aws_lambda_function" "jwt_authorizer" {
   handler       = "jwt_authorizer.handler"
   runtime       = "python3.9"
   role          = aws_iam_role.lambda_exec_role.arn
-  filename      = "${path.module}/../../../lambdas/authorizer/authorizer.zip"
+  filename      = data.archive_file.jwt_authorizer_zip.output_path
+  source_code_hash = data.archive_file.jwt_authorizer_zip.output_base64sha256
   layers = [aws_lambda_layer_version.shared_dependencies.arn, "arn:aws:lambda:us-east-1:017000801446:layer:AWSLambdaPowertoolsPythonV3-python39-x86_64:6"]
-  depends_on = [null_resource.package_authorizer]
+  # depends_on = [null_resource.package_authorizer]
   timeout       = 30
 
   environment {
