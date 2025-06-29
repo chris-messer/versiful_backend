@@ -76,7 +76,7 @@ resource "aws_iam_access_key" "github_access_key" {
 
 # IAM Policy for S3 Upload
 resource "aws_iam_policy" "s3_deploy_policy" {
-  name        = "S3DeployPolicy"
+  name        = "${var.environment}-${var.project_name}-S3DeployPolicy"
   description = "Policy to allow GitHub Actions to deploy files to S3"
   policy      = <<EOF
 {
