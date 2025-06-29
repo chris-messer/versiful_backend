@@ -20,7 +20,7 @@ crash.log
 
 # Ignore generated `.terraform` directory (Terraform downloads plugins & dependencies here)
 .terraform/
-.terraform.lock.hcl
+#.terraform.lock.hcl
 
 # Ignore Terraform logs (if any exist)
 *.log
