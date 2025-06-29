@@ -71,7 +71,7 @@ resource "aws_cognito_identity_provider" "google" {
 # 4. Create a Cognito User Pool Client
 resource "aws_cognito_user_pool_client" "user_pool_client" {
   user_pool_id = aws_cognito_user_pool.user_pool.id
-  name         = "${var.project_name}-client"
+  name         = "${var.environment}-${var.project_name}-client"
 
   # Allow OAuth flows
   allowed_oauth_flows_user_pool_client = true
