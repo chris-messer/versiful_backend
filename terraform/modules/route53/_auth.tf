@@ -14,7 +14,7 @@ resource "aws_route53_record" "cognito_cert_validation" {
   ttl     = 300
 }
 
-# #TODO move to shared resources
+
 # resource "aws_route53_record" "cognito_parent_placeholder" {
 #   zone_id = data.aws_route53_zone.zone.zone_id
 #   name    = "auth.${var.domain_name}"

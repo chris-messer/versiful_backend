@@ -102,7 +102,7 @@ resource "aws_cognito_user_pool_client" "user_pool_client" {
   ]
 
   logout_urls = [
-    "https://${local.domain}/logout" # TODO Replace with your frontend's logout URL
+    "https://${local.domain}/logout"
   ]
 
   # Explicit auth flows for email/password login
