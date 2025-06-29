@@ -1,3 +1,8 @@
+variable "environment" {
+  description = "environment (dev/staging/prod)"
+  type        = string
+}
+
 variable "twilio_sid" {
   description = "Twilio SID"
   type        = string

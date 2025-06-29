@@ -1,3 +1,8 @@
+variable "environment" {
+  description = "environment (dev/staging/prod)"
+  type        = string
+}
+
 variable "twilio_sid" {
   description = "Twilio SID"
   type        = string
@@ -38,9 +43,4 @@ variable "google_client_secret" {
   description = "Google client secret for cognito auth"
   type        = string
   sensitive   = true
-}
-
-variable "allowed_cors_origins" {
-  description = "list of origins available for CORS requests"
-  type        = list(string)
 }

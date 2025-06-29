@@ -7,7 +7,7 @@ module "globals" {
     }
 
 locals {
-    environment     = "dev"
+    environment     = var.environment
     region          = module.globals.region
     project_name    = module.globals.project_name
     domain     = module.globals.domain
