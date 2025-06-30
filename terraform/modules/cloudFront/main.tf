@@ -1,6 +1,18 @@
 locals {
-  domain = var.environment == "prod" ? "www.${var.domain_name}" : "${var.environment}.${var.domain_name}"
+  env_prefix  = var.environment
+  domain      = "${local.env_prefix}.${var.domain_name}"         # prod.versiful.io, dev.versiful.io, etc.
+  api_domain  = "api.${local.env_prefix}.${var.domain_name}"
+  auth_domain = "auth.${local.env_prefix}.${var.domain_name}"
+
+  aliases = var.environment == "prod" ? [
+    local.domain,            # prod.versiful.io
+    var.domain_name,         # versiful.io
+    "www.${var.domain_name}" # www.versiful.io
+  ] : [
+    local.domain             # only env-prefixed domain in dev/staging
+  ]
 }
+
 
 # Delay cloudfront distrobution until certificate is validated
 resource "null_resource" "wait_for_acm_validation" {
@@ -29,6 +41,7 @@ resource "null_resource" "wait_for_acm_validation" {
 
 # CloudFront Distribution
 resource "aws_cloudfront_distribution" "cdn" {
+
   origin {
     domain_name = var.website_endpoint
     origin_id   = "S3-Static-Website"
@@ -44,7 +57,7 @@ resource "aws_cloudfront_distribution" "cdn" {
   enabled             = true
   default_root_object = "index.html"
 
-  aliases = [local.domain]
+  aliases = local.aliases
 
 
   viewer_certificate {

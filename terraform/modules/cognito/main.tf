@@ -1,7 +1,8 @@
 locals {
-  domain = var.environment == "prod" ? "www.${var.domain_name}" : "${var.environment}.${var.domain_name}"
-  api_domain = var.environment == "prod" ? "api.${var.domain_name}" : "${var.environment}.api.${var.domain_name}"
-  auth_domain   = var.environment == "prod" ? "auth.${var.domain_name}" : "auth.${var.environment}.${var.domain_name}"
+  env_prefix  = var.environment
+  domain      = "${local.env_prefix}.${var.domain_name}"         # prod.versiful.io, etc.
+  api_domain  = "api.${local.env_prefix}.${var.domain_name}"     # api.prod.versiful.io, etc.
+  auth_domain = "auth.${local.env_prefix}.${var.domain_name}"    # auth.prod.versiful.io, etc.
 }
 
 # 1. Create a Cognito User Pool

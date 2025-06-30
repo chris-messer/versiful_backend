@@ -16,6 +16,7 @@ locals {
 
 provider "aws" {
   region = local.region
+  alias = "us-east-1"
 }
 
 

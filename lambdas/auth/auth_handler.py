@@ -21,10 +21,7 @@ env = os.environ["ENVIRONMENT"]
 project_name = os.environ["PROJECT_NAME"]
 domain = os.environ["DOMAIN"]
 
-if os.environ["ENVIRONMENT"] == "prod":
-    COGNITO_TOKEN_URL = f"https://auth.{domain}/oauth2/token"
-else:
-    COGNITO_TOKEN_URL = f"https://auth.{env}.{domain}/oauth2/token"
+COGNITO_TOKEN_URL = f"https://auth.{env}.{domain}/oauth2/token"
 
 COGNITO_CLIENT_ID = os.environ["CLIENT_ID"]
 

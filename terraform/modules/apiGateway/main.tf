@@ -1,6 +1,10 @@
 locals {
-  api_domain = var.environment == "prod" ? "api.${var.domain_name}" : "api.${var.environment}.${var.domain_name}"
+  env_prefix  = var.environment
+  domain      = "${local.env_prefix}.${var.domain_name}"         # prod.versiful.io, dev.versiful.io, etc.
+  api_domain  = "api.${local.env_prefix}.${var.domain_name}"     # api.prod.versiful.io, etc.
+  auth_domain = "auth.${local.env_prefix}.${var.domain_name}"    # auth.prod.versiful.io, etc.
 }
+
 
 # API Gateway v2 (HTTP API)
 resource "aws_apigatewayv2_api" "lambda_api" {
