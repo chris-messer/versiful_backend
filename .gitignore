@@ -4,6 +4,9 @@
 **/versiful_frontend/
 .idea/
 
+# Environment variables
+.env
+
 # Ignore Terraform state files (VERY IMPORTANT!)
 *.tfstate
 *.tfstate.backup
