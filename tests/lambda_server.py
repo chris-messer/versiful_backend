@@ -1,7 +1,7 @@
 # local_server.py
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
-from lambdas.sms.sms_handler import handler
+from backend.lambdas.sms.sms_handler import handler
 
 class LambdaRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self):

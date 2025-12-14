@@ -115,7 +115,7 @@ resource "aws_cloudwatch_log_group" "api_gateway_log_group" {
 resource "null_resource" "package_layer" {
   provisioner "local-exec" {
     command = <<EOT
-      cd ${path.module}/../../../lambdas/layer && \
+      cd ${path.module}/../../../backend/lambdas/layer && \
       rm -rf python && \
       mkdir python && \
       pip install -r requirements.txt -t python
@@ -129,7 +129,7 @@ resource "null_resource" "package_layer" {
 #   }
 }
 resource "aws_lambda_layer_version" "shared_dependencies" {
-  filename         = "${path.module}/../../../lambdas/layer/layer.zip"
+  filename         = "${path.module}/../../../backend/lambdas/layer/layer.zip"
   layer_name       = "shared_dependencies"
   compatible_runtimes = ["python3.9"]
   depends_on = [null_resource.package_layer]

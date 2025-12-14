@@ -2,7 +2,7 @@
 # resource "null_resource" "package_users" {
 #   provisioner "local-exec" {
 #     command = <<EOT
-#       cd ${path.module}/../../../lambdas/users && \
+#       cd ${path.module}/../../../backend/lambdas/users && \
 #       [ -f users.zip ] && rm users.zip
 #       zip -r users.zip .
 #     EOT
@@ -15,8 +15,8 @@
 
 data "archive_file" "users_zip" {
   type        = "zip"
-  source_dir  = "${path.module}/../../../lambdas/users"
-  output_path = "${path.module}/../../../lambdas/users/users.zip"
+  source_dir  = "${path.module}/../../../backend/lambdas/users"
+  output_path = "${path.module}/../../../backend/lambdas/users/users.zip"
 }
 
 # Deploy users Lambda function

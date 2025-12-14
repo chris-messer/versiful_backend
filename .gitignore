@@ -4,6 +4,17 @@
 **/versiful_frontend/
 .idea/
 
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
 # Environment variables
 .env
 
