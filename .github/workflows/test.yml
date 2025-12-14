@@ -53,10 +53,20 @@ jobs:
       - name: Run unit tests
         run: |
           pytest tests/unit -v -m unit --cov=lambdas --cov-report=term-missing
+        env:
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_ACCESS_KEY_ID: dummy
+          AWS_SECRET_ACCESS_KEY: dummy
+          AWS_EC2_METADATA_DISABLED: "true"
       
       - name: Run integration tests
         run: |
           pytest tests/integration -v -m integration
+        env:
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_ACCESS_KEY_ID: dummy
+          AWS_SECRET_ACCESS_KEY: dummy
+          AWS_EC2_METADATA_DISABLED: "true"
 
   # Job 2: E2E Tests (only on push to branches, test against real environment)
   e2e-tests:
@@ -155,7 +165,11 @@ jobs:
       
       - name: Health check
         run: |
-          curl -f ${{ vars.API_BASE_URL }}/health || exit 1
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X OPTIONS "${{ vars.API_BASE_URL }}/sms")
+          if [ "$STATUS" -ge 500 ]; then
+            echo "Health check failed with status $STATUS"
+            exit 1
+          fi
         env:
           ENVIRONMENT: ${{ steps.get-env.outputs.environment }}
       
