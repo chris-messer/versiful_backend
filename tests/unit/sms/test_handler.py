@@ -27,6 +27,7 @@ def test_sms_handler_success(sms_event):
     # Mock external dependencies
     with patch("lambdas.sms.sms_handler.Client") as mock_client, \
          patch("lambdas.sms.sms_handler.MessagingResponse") as mock_resp, \
+         patch("lambdas.sms.sms_handler.generate_response", return_value={"parable": "test"}), \
          patch("lambdas.sms.helpers.generate_response", return_value={"parable": "test"}), \
          patch("lambdas.sms.helpers.send_message"):
         

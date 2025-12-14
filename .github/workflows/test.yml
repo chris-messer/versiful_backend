@@ -172,6 +172,7 @@ jobs:
           fi
         env:
           ENVIRONMENT: ${{ steps.get-env.outputs.environment }}
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
       
       - name: Basic API test
         run: |

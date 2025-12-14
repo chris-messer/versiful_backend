@@ -3,6 +3,9 @@ import sys
 
 import pytest
 
+import types
+import json
+
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
@@ -10,8 +13,39 @@ if PROJECT_ROOT not in sys.path:
 
 @pytest.mark.unit
 def test_gpt4(monkeypatch):
-    monkeypatch.setenv("OPENAI_API_KEY", "dummy")
+    # Stub secrets and OpenAI call to avoid real AWS/OpenAI usage
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "dummy")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "dummy")
+
+    # Fake Secrets Manager client
+    class FakeSecretsClient:
+        def get_secret_value(self, SecretId):
+            return {"SecretString": json.dumps({"gpt": "dummy-key"})}
+
+    monkeypatch.setattr(
+        "boto3.session.Session",
+        lambda: types.SimpleNamespace(client=lambda service_name, region_name=None: FakeSecretsClient()),
+    )
+
+    # Fake OpenAI response
+    class FakeResp:
+        def __init__(self):
+            self._json = {
+                "choices": [
+                    {"message": {"content": "parable: Good Samaritan\nsummary: Help others"}}
+                ]
+            }
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._json
+
+    monkeypatch.setattr("requests.post", lambda *args, **kwargs: FakeResp())
+
     from lambdas.sms.helpers import generate_response
 
     r = generate_response("Give me a bible verse")
-    assert r is not None
+    assert "parable" in r or "summary" in r or "Good Samaritan" in r
