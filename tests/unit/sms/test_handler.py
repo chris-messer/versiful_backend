@@ -28,6 +28,7 @@ def test_sms_handler_success(sms_event):
     with patch("lambdas.sms.sms_handler.Client") as mock_client, \
          patch("lambdas.sms.sms_handler.MessagingResponse") as mock_resp, \
          patch("lambdas.sms.sms_handler.generate_response", return_value={"parable": "test"}), \
+         patch("lambdas.sms.sms_handler.send_message") as mock_send, \
          patch("lambdas.sms.helpers.generate_response", return_value={"parable": "test"}), \
          patch("lambdas.sms.helpers.send_message"):
         
@@ -36,6 +37,7 @@ def test_sms_handler_success(sms_event):
         response = handler(sms_event, {})
         
         assert response["statusCode"] == 200
+        mock_send.assert_called_once()
 
 
 @pytest.mark.unit
