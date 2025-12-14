@@ -67,6 +67,19 @@ resource "aws_cognito_identity_provider" "google" {
     email = "email"
     name  = "name"
   }
+
+  # Ignore changes to fields that AWS auto-populates
+  lifecycle {
+    ignore_changes = [
+      attribute_mapping["username"],
+      provider_details["attributes_url"],
+      provider_details["attributes_url_add_attributes"],
+      provider_details["authorize_url"],
+      provider_details["oidc_issuer"],
+      provider_details["token_request_method"],
+      provider_details["token_url"]
+    ]
+  }
 }
 
 # 4. Create a Cognito User Pool Client

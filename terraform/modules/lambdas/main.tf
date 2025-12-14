@@ -115,21 +115,20 @@ resource "aws_cloudwatch_log_group" "api_gateway_log_group" {
 resource "null_resource" "package_layer" {
   provisioner "local-exec" {
     command = <<EOT
-      cd ${path.module}/../../../backend/lambdas/layer && \
+      cd ${path.module}/../../../lambdas/layer && \
       rm -rf python && \
       mkdir python && \
-      pip install -r requirements.txt -t python
-      pip3 install --upgrade --platform manylinux_2_17_aarch64 --only-binary=:all: pydantic-core==2.14.1 -t python && \
+      pip install -r requirements.txt -t python && \
       zip -r layer.zip python
     EOT
   }
 
-#   triggers = {
-#     force_redeploy = timestamp()
-#   }
+  triggers = {
+    requirements = filemd5("${path.module}/../../../lambdas/layer/requirements.txt")
+  }
 }
 resource "aws_lambda_layer_version" "shared_dependencies" {
-  filename         = "${path.module}/../../../backend/lambdas/layer/layer.zip"
+  filename         = "${path.module}/../../../lambdas/layer/layer.zip"
   layer_name       = "shared_dependencies"
   compatible_runtimes = ["python3.9"]
   depends_on = [null_resource.package_layer]

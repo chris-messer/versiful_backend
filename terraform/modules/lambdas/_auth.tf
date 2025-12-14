@@ -2,7 +2,7 @@
 # resource "null_resource" "package_auth" {
 #   provisioner "local-exec" {
 #     command = <<EOT
-#       cd ${path.module}/../../../backend/lambdas/auth && \
+#       cd ${path.module}/../../../lambdas/auth && \
 #       [ -f auth.zip ] && rm auth.zip
 #       zip -r auth.zip .
 #     EOT
@@ -15,8 +15,15 @@
 
 data "archive_file" "auth_zip" {
   type        = "zip"
-  source_dir  = "${path.module}/../../../backend/lambdas/auth"
-  output_path = "${path.module}/../../../backend/lambdas/auth/auth.zip"
+  source_dir  = "${path.module}/../../../lambdas/auth"
+  output_path = "${path.module}/../../../lambdas/auth/auth.zip"
+  excludes = [
+    "__pycache__",
+    "*.pyc",
+    "*.zip",
+    ".pytest_cache",
+    "*.egg-info"
+  ]
 }
 
 # Deploy Lambda function
@@ -96,7 +103,7 @@ resource "aws_apigatewayv2_route" "lambda_auth_delete_route" {
 # resource "null_resource" "package_authorizer" {
 #   provisioner "local-exec" {
 #     command = <<EOT
-#       cd ${path.module}/../../../backend/lambdas/authorizer && \
+#       cd ${path.module}/../../../lambdas/authorizer && \
 #       [ -f auth.zip ] && rm authorizer.zip
 #       zip -r authorizer.zip .
 #     EOT
@@ -109,8 +116,15 @@ resource "aws_apigatewayv2_route" "lambda_auth_delete_route" {
 
 data "archive_file" "jwt_authorizer_zip" {
   type        = "zip"
-  source_dir  = "${path.module}/../../../backend/lambdas/authorizer"
-  output_path = "${path.module}/../../../backend/lambdas/authorizer/authorizer.zip"
+  source_dir  = "${path.module}/../../../lambdas/authorizer"
+  output_path = "${path.module}/../../../lambdas/authorizer/authorizer.zip"
+  excludes = [
+    "__pycache__",
+    "*.pyc",
+    "*.zip",
+    ".pytest_cache",
+    "*.egg-info"
+  ]
 }
 
 # Deploy Lambda function

@@ -64,7 +64,7 @@ resource "aws_cloudwatch_log_group" "api_gateway_log_group" {
 resource "null_resource" "package_sms" {
   provisioner "local-exec" {
     command = <<EOT
-      cd ${path.module}/../backend/lambdas/sms && \
+      cd ${path.module}/../lambdas/sms && \
       rm -f sms.zip && \
       pip install -r requirements.txt -t . && \
       zip -r sms.zip .
@@ -80,7 +80,7 @@ resource "null_resource" "package_sms" {
 resource "null_resource" "package_web" {
   provisioner "local-exec" {
     command = <<EOT
-      cd ${path.module}/../backend/lambdas/web && \
+      cd ${path.module}/../lambdas/web && \
       rm -f web.zip && \
       pip install -r requirements.txt -t . && \
       zip -r web.zip .
@@ -98,7 +98,7 @@ resource "aws_lambda_function" "sms_function" {
   handler       = "sms_handler.handler"
   runtime       = "python3.9"
   role          = aws_iam_role.lambda_exec_role.arn
-  filename      = "${path.module}/../backend/lambdas/sms/sms.zip"
+  filename      = "${path.module}/../lambdas/sms/sms.zip"
 
   depends_on = [null_resource.package_sms]
 
@@ -119,7 +119,7 @@ resource "aws_lambda_function" "web_function" {
   handler       = "web_handler.handler"
   runtime       = "python3.9"
   role          = aws_iam_role.lambda_exec_role.arn
-  filename      = "${path.module}/../backend/lambdas/web/web.zip"
+  filename      = "${path.module}/../lambdas/web/web.zip"
 
   depends_on = [null_resource.package_web]
 
