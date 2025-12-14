@@ -59,27 +59,11 @@ jobs:
 
   # Job 2: E2E Tests (only on push to branches, test against real environment)
   e2e-tests:
-    name: E2E Tests - ${{ matrix.environment }}
+    name: E2E Tests
     runs-on: ubuntu-latest
     
-    # Determine which environment to test based on branch
-    strategy:
-      matrix:
-        include:
-          - branch: dev
-            environment: dev
-          - branch: staging
-            environment: staging
-          - branch: prod
-            environment: prod
-    
-    # Only run for the matching branch and event
-    if: |
-      (github.event_name == 'push' && github.ref == format('refs/heads/{0}', matrix.branch)) ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == matrix.environment)
-    
-    environment:
-      name: ${{ matrix.environment }}
+    # Only run on push (after merge), not on PRs
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     
     steps:
       - name: Checkout code
@@ -90,6 +74,19 @@ jobs:
         with:
           python-version: '3.9'
           cache: 'pip'
+      
+      - name: Determine environment from branch
+        id: get-env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/prod" || "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
       
       - name: Install dependencies
         run: |
@@ -111,41 +108,54 @@ jobs:
           echo "USER_POOL_CLIENT_ID=${{ vars.USER_POOL_CLIENT_ID }}" >> $GITHUB_ENV
           echo "TEST_USER_EMAIL=${{ secrets.TEST_USER_EMAIL }}" >> $GITHUB_ENV
           echo "TEST_USER_PASSWORD=${{ secrets.TEST_USER_PASSWORD }}" >> $GITHUB_ENV
+        env:
+          ENVIRONMENT: ${{ steps.get-env.outputs.environment }}
       
-      - name: Run E2E tests against ${{ matrix.environment }}
+      - name: Run E2E tests against ${{ steps.get-env.outputs.environment }}
         run: |
           pytest tests/e2e -v -m e2e --maxfail=3
         env:
-          ENVIRONMENT: ${{ matrix.environment }}
+          ENVIRONMENT: ${{ steps.get-env.outputs.environment }}
       
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.environment }}
+          name: test-results-${{ steps.get-env.outputs.environment }}
           path: |
             pytest-results.xml
             htmlcov/
 
   # Job 3: Smoke tests after deployment (optional)
   smoke-tests:
-    name: Smoke Tests - ${{ matrix.environment }}
+    name: Smoke Tests
     runs-on: ubuntu-latest
     needs: e2e-tests
     
     if: github.event_name == 'push'
     
-    strategy:
-      matrix:
-        environment: [dev, staging, prod]
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
       
+      - name: Determine environment from branch
+        id: get-env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/prod" || "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
+      
       - name: Health check
         run: |
           curl -f ${{ vars.API_BASE_URL }}/health || exit 1
+        env:
+          ENVIRONMENT: ${{ steps.get-env.outputs.environment }}
       
       - name: Basic API test
         run: |
