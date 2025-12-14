@@ -1,0 +1,14 @@
+{
+    "python.defaultInterpreterPath": "/opt/anaconda3/bin/python",
+    "python.testing.pytestArgs": [
+        "tests",
+        "-v",
+        "--tb=short"
+    ],
+    "python.testing.pytestPath": "/opt/anaconda3/bin/pytest",
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "python.testing.autoTestDiscoverOnSaveEnabled": true,
+    "python.testing.cwd": "${workspaceFolder}",
+    "python.envFile": "${workspaceFolder}/.env"
+}

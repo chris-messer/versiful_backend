@@ -16,6 +16,13 @@ data "archive_file" "sms_zip" {
   type        = "zip"
   source_dir  = "${path.module}/../../../lambdas/sms"
   output_path = "${path.module}/../../../lambdas/sms/sms.zip"
+  excludes = [
+    "__pycache__",
+    "*.pyc",
+    "*.zip",
+    ".pytest_cache",
+    "*.egg-info"
+  ]
 }
 
 # Deploy SMS Lambda function

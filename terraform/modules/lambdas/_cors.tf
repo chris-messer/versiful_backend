@@ -1,22 +1,17 @@
 # Package the Lambda function
-resource "null_resource" "package_cors" {
-  provisioner "local-exec" {
-    command = <<EOT
-      cd ${path.module}/../../../lambdas/cors && \
-      [ -f cors.zip ] && rm cors.zip
-      zip -r cors.zip .
-    EOT
-  }
-
-#   triggers = {
-#     force_redeploy = timestamp()
-#   }
-}
+# Removed null_resource - using archive_file data source instead
 
 data "archive_file" "cors_zip" {
   type        = "zip"
   source_dir  = "${path.module}/../../../lambdas/cors"
   output_path = "${path.module}/../../../lambdas/cors/cors.zip"
+  excludes = [
+    "__pycache__",
+    "*.pyc",
+    "*.zip",
+    ".pytest_cache",
+    "*.egg-info"
+  ]
 }
 
 # Deploy Lambda function
@@ -31,6 +26,11 @@ resource "aws_lambda_function" "cors_function" {
   # depends_on = [null_resource.package_cors]
   timeout       = 30
 
+  environment {
+    variables = {
+      ALLOWED_CORS_ORIGINS = join(",", var.allowed_cors_origins)
+    }
+  }
 
   tags = {
     Environment = var.environment

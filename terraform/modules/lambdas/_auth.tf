@@ -17,6 +17,13 @@ data "archive_file" "auth_zip" {
   type        = "zip"
   source_dir  = "${path.module}/../../../lambdas/auth"
   output_path = "${path.module}/../../../lambdas/auth/auth.zip"
+  excludes = [
+    "__pycache__",
+    "*.pyc",
+    "*.zip",
+    ".pytest_cache",
+    "*.egg-info"
+  ]
 }
 
 # Deploy Lambda function
@@ -111,6 +118,13 @@ data "archive_file" "jwt_authorizer_zip" {
   type        = "zip"
   source_dir  = "${path.module}/../../../lambdas/authorizer"
   output_path = "${path.module}/../../../lambdas/authorizer/authorizer.zip"
+  excludes = [
+    "__pycache__",
+    "*.pyc",
+    "*.zip",
+    ".pytest_cache",
+    "*.egg-info"
+  ]
 }
 
 # Deploy Lambda function

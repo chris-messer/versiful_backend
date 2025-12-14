@@ -17,6 +17,13 @@ data "archive_file" "users_zip" {
   type        = "zip"
   source_dir  = "${path.module}/../../../lambdas/users"
   output_path = "${path.module}/../../../lambdas/users/users.zip"
+  excludes = [
+    "__pycache__",
+    "*.pyc",
+    "*.zip",
+    ".pytest_cache",
+    "*.egg-info"
+  ]
 }
 
 # Deploy users Lambda function
