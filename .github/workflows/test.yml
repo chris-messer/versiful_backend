@@ -72,6 +72,8 @@ jobs:
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-latest
+    environment:
+      name: dev
     
     # Only run on push (after merge), not on PRs
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -143,6 +145,8 @@ jobs:
     name: Smoke Tests
     runs-on: ubuntu-latest
     needs: e2e-tests
+    environment:
+      name: dev
     
     if: github.event_name == 'push'
     
