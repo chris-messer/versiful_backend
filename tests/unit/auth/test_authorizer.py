@@ -14,6 +14,7 @@ from types import SimpleNamespace
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
 
 
+@pytest.mark.unit
 def test_jwt_authorizer(monkeypatch):
     """Test JWT authorizer with valid token."""
     monkeypatch.setenv("ENVIRONMENT", "dev")

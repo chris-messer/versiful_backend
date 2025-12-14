@@ -13,6 +13,7 @@ from botocore.exceptions import ClientError
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
 
 
+@pytest.mark.unit
 @pytest.fixture
 def mock_env_users(monkeypatch):
     """Set required env vars for users helpers."""
@@ -20,6 +21,7 @@ def mock_env_users(monkeypatch):
     monkeypatch.setenv("PROJECT_NAME", "versiful")
 
 
+@pytest.mark.unit
 @pytest.fixture
 def mock_dynamodb_table(mock_env_users):
     """Mock DynamoDB table for users helpers."""
@@ -27,6 +29,7 @@ def mock_dynamodb_table(mock_env_users):
         yield mock_table
 
 
+@pytest.mark.unit
 def test_create_user_new_user(mock_dynamodb_table):
     """Test creating a new user when user doesn't exist."""
     from lambdas.users.helpers import create_user
@@ -45,6 +48,7 @@ def test_create_user_new_user(mock_dynamodb_table):
     mock_dynamodb_table.put_item.assert_called_once()
 
 
+@pytest.mark.unit
 def test_create_user_existing_user(mock_dynamodb_table):
     """Test creating a user when user already exists."""
     from lambdas.users.helpers import create_user
@@ -68,6 +72,7 @@ def test_create_user_existing_user(mock_dynamodb_table):
     mock_dynamodb_table.put_item.assert_not_called()
 
 
+@pytest.mark.unit
 def test_create_user_missing_user_id(mock_dynamodb_table):
     """Test create_user with missing userId (should raise KeyError)."""
     from lambdas.users.helpers import create_user
@@ -78,6 +83,7 @@ def test_create_user_missing_user_id(mock_dynamodb_table):
         create_user(event, {})
 
 
+@pytest.mark.unit
 def test_get_user_profile_success(mock_dynamodb_table):
     """Test retrieving existing user profile."""
     from lambdas.users.helpers import get_user_profile
@@ -100,6 +106,7 @@ def test_get_user_profile_success(mock_dynamodb_table):
     assert body["isSubscribed"] is True
 
 
+@pytest.mark.unit
 def test_get_user_profile_not_found(mock_dynamodb_table):
     """Test retrieving non-existent user profile."""
     from lambdas.users.helpers import get_user_profile
@@ -115,6 +122,7 @@ def test_get_user_profile_not_found(mock_dynamodb_table):
     assert "error" in body
 
 
+@pytest.mark.unit
 def test_update_user_settings_success(mock_dynamodb_table):
     """Test updating user settings with valid fields."""
     from lambdas.users.helpers import update_user_settings
@@ -137,6 +145,7 @@ def test_update_user_settings_success(mock_dynamodb_table):
     mock_dynamodb_table.update_item.assert_called_once()
 
 
+@pytest.mark.unit
 def test_update_user_settings_no_valid_fields(mock_dynamodb_table):
     """Test update with no valid fields."""
     from lambdas.users.helpers import update_user_settings
@@ -153,6 +162,7 @@ def test_update_user_settings_no_valid_fields(mock_dynamodb_table):
     assert "No valid fields" in body["message"]
 
 
+@pytest.mark.unit
 def test_update_user_settings_user_not_exists(mock_dynamodb_table):
     """Test update when user doesn't exist."""
     from lambdas.users.helpers import update_user_settings

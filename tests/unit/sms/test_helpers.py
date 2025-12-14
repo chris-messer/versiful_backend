@@ -10,6 +10,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
 
 
+@pytest.mark.unit
 def test_parse_url_string():
     """Test URL-encoded string parsing."""
     from lambdas.sms.helpers import parse_url_string
@@ -22,6 +23,7 @@ def test_parse_url_string():
     assert result["To"] == "+18336811158"
 
 
+@pytest.mark.unit
 def test_parse_url_string_empty():
     """Test parsing empty string."""
     from lambdas.sms.helpers import parse_url_string

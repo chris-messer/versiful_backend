@@ -13,6 +13,7 @@ from types import SimpleNamespace
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
 
 
+@pytest.mark.unit
 def test_auth_handler_callback(monkeypatch):
     """Test auth callback with valid code."""
     monkeypatch.setenv("ENVIRONMENT", "dev")

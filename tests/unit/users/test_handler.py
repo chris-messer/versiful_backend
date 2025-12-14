@@ -13,6 +13,7 @@ from types import SimpleNamespace
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
 
 
+@pytest.mark.unit
 def test_users_handler_routes(monkeypatch):
     """Test users handler routing with mocked helpers."""
     monkeypatch.setenv("ENVIRONMENT", "dev")

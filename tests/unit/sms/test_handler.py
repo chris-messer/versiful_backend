@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
 
 
+@pytest.mark.unit
 @pytest.fixture()
 def sms_event():
     """Load real Twilio event sample."""
@@ -20,6 +21,7 @@ def sms_event():
         return json.load(f)
 
 
+@pytest.mark.unit
 def test_sms_handler_success(sms_event):
     """Test SMS handler with mocked Twilio and GPT."""
     # Mock external dependencies
@@ -35,6 +37,7 @@ def test_sms_handler_success(sms_event):
         assert response["statusCode"] == 200
 
 
+@pytest.mark.unit
 def test_sms_handler_no_body():
     """Test SMS handler with no body (OPTIONS request)."""
     event = {
@@ -50,6 +53,7 @@ def test_sms_handler_no_body():
     assert "Access-Control-Allow-Origin" in response["headers"]
 
 
+@pytest.mark.unit
 def test_sms_handler_error():
     """Test SMS handler when GPT fails."""
     event = {

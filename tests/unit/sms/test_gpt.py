@@ -8,6 +8,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 
+@pytest.mark.unit
 def test_gpt4(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "dummy")
     from lambdas.sms.helpers import generate_response
