@@ -31,6 +31,11 @@ resource "aws_lambda_function" "cors_function" {
   # depends_on = [null_resource.package_cors]
   timeout       = 30
 
+  environment {
+    variables = {
+      ALLOWED_CORS_ORIGINS = join(",", var.allowed_cors_origins)
+    }
+  }
 
   tags = {
     Environment = var.environment

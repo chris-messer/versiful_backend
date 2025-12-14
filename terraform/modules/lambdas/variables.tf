@@ -45,3 +45,8 @@ variable "user_pool_id" {
 variable "jwt_auth_id" {
     description = "JWT auth ID that is attached to the API Gateway"
     }
+
+variable "allowed_cors_origins" {
+  description = "List of allowed CORS origins"
+  type        = list(string)
+}

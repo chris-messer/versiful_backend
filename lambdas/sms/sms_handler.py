@@ -66,8 +66,26 @@ def handler(event, context):
 
         except Exception as E:
             logger.info('Error: %s', E)
+            return {
+                "statusCode": 500,
+                "headers": {
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "OPTIONS,POST",
+                    "Access-Control-Allow-Headers": "Content-Type,Authorization"
+                },
+                "body": json.dumps({"error": str(E)})
+            }
 
     else:
         logger.info('Body was none, exiting')
-
+        # Return 200 for OPTIONS/health checks
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "OPTIONS,POST",
+                "Access-Control-Allow-Headers": "Content-Type,Authorization"
+            },
+            "body": json.dumps({"message": "OK"})
+        }
 
