@@ -2,7 +2,7 @@
 resource "null_resource" "package_cors" {
   provisioner "local-exec" {
     command = <<EOT
-      cd ${path.module}/../../../lambdas/cors && \
+      cd ${path.module}/../../../backend/lambdas/cors && \
       [ -f cors.zip ] && rm cors.zip
       zip -r cors.zip .
     EOT
@@ -15,8 +15,8 @@ resource "null_resource" "package_cors" {
 
 data "archive_file" "cors_zip" {
   type        = "zip"
-  source_dir  = "${path.module}/../../../lambdas/cors"
-  output_path = "${path.module}/../../../lambdas/cors/cors.zip"
+  source_dir  = "${path.module}/../../../backend/lambdas/cors"
+  output_path = "${path.module}/../../../backend/lambdas/cors/cors.zip"
 }
 
 # Deploy Lambda function
