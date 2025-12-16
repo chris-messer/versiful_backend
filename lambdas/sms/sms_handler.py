@@ -43,26 +43,34 @@ def handler(event, context):
         try:
             logger.info('Fetching from GPT')
             gpt_response = generate_response(body)
-            if 'error' in gpt_response:
-                E = gpt_response['error']['message']
-                logger.info('GPT Error: %s', E)
-            else:
-                logger.info('Sending Message...')
-                send_message(from_num, gpt_response)
+            error_msg = None
+            if isinstance(gpt_response, dict) and gpt_response.get('error'):
+                error_msg = gpt_response['error']
+            elif isinstance(gpt_response, str) and gpt_response.lower().startswith('error'):
+                error_msg = gpt_response
+
+            if error_msg:
+                logger.info('GPT Error: %s', error_msg)
                 return {
-                    "statusCode": 200,
+                    "statusCode": 500,
                     "headers": {
                         "Access-Control-Allow-Origin": "*",
                         "Access-Control-Allow-Methods": "OPTIONS,POST",
                         "Access-Control-Allow-Headers": "Content-Type,Authorization"
                     },
-                    # "body": json.dumps({
-                    #     "parable": f"{gpt_response}",
-                    # })
+                    "body": json.dumps({"error": str(error_msg)})
                 }
 
-            # resp.message(f"Posting \n Prompt: {prompt}\n Status: {status}")
-            # return str(resp)
+            logger.info('Sending Message...')
+            send_message(from_num, gpt_response)
+            return {
+                "statusCode": 200,
+                "headers": {
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "OPTIONS,POST",
+                    "Access-Control-Allow-Headers": "Content-Type,Authorization"
+                }
+            }
 
         except Exception as E:
             logger.info('Error: %s', E)

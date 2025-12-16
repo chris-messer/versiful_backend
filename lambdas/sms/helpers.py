@@ -83,11 +83,11 @@ def generate_response(message, model="gpt-4o"):
     }
 
     try:
-        response = requests.post(url, headers=headers, data=json.dumps(data))
+        response = requests.post(url, headers=headers, data=json.dumps(data), timeout=30)
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"]
     except requests.exceptions.RequestException as e:
-        return f"Error: {str(e)}"
+        return {"error": str(e)}
 
 def generate_photo(prompt):
     url = "https://api.openai.com/v1/images/generations"

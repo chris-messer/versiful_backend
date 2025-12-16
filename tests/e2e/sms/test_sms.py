@@ -37,9 +37,12 @@ def test_api_sms_endpoint():
         data=urlencode(twilio_data),
         headers={"Content-Type": "application/x-www-form-urlencoded"}
     )
-    
-    # Handler may not return proper response on errors, accept 200 or 500
-    assert response.status_code in [200, 500]
+
+    # Require success and no error text in body
+    assert response.status_code == 200
+    body_text = response.text.lower() if response.text else ""
+    assert "error" not in body_text
+    assert "unauthorized" not in body_text
 
 
 @pytest.mark.e2e

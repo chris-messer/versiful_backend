@@ -73,3 +73,23 @@ def test_sms_handler_error():
         assert response["statusCode"] == 500
         assert "error" in json.loads(response["body"])
 
+
+@pytest.mark.unit
+def test_sms_handler_error_dict():
+    """Test SMS handler when GPT returns structured error dict."""
+    event = {
+        "body": "Body=Test&From=%2B1234567890",
+        "isBase64Encoded": False
+    }
+
+    with patch("lambdas.sms.sms_handler.generate_response", return_value={"error": "no key"}), \
+         patch("lambdas.sms.sms_handler.send_message") as mock_send:
+        from lambdas.sms.sms_handler import handler
+
+        response = handler(event, {})
+
+        assert response["statusCode"] == 500
+        body = json.loads(response["body"])
+        assert "error" in body
+        mock_send.assert_not_called()
+
