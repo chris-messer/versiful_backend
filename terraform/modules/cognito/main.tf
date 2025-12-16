@@ -1,8 +1,19 @@
+terraform {
+  required_providers {
+    http = {
+      source  = "hashicorp/http"
+      version = "~> 3.4"
+    }
+  }
+}
+
 locals {
   env_prefix  = var.environment
   domain      = "${local.env_prefix}.${var.domain_name}"         # prod.versiful.io, etc.
   api_domain  = "api.${local.env_prefix}.${var.domain_name}"     # api.prod.versiful.io, etc.
   auth_domain = "auth.${local.env_prefix}.${var.domain_name}"    # auth.prod.versiful.io, etc.
+  branding_branch    = var.environment == "prod" ? "main" : var.environment
+  branding_repo_base = "https://raw.githubusercontent.com/chris-messer/versiful_frontend/${local.branding_branch}/public"
 }
 
 # 1. Create a Cognito User Pool
@@ -127,4 +138,17 @@ resource "aws_cognito_user_pool_client" "user_pool_client" {
     "ALLOW_USER_SRP_AUTH",          # Enables Secure Remote Password (SRP) authentication
     "ALLOW_REFRESH_TOKEN_AUTH"
   ]
+}
+
+# Hosted UI branding
+data "http" "cognito_branding_logo" {
+  url = "${local.branding_repo_base}/logo.svg"
+}
+
+resource "aws_cognito_user_pool_ui_customization" "ui" {
+  user_pool_id = aws_cognito_user_pool.user_pool.id
+  client_id    = aws_cognito_user_pool_client.user_pool_client.id
+
+  css        = file("${path.module}/branding.css")
+  image_file = base64encode(data.http.cognito_branding_logo.response_body)
 }
