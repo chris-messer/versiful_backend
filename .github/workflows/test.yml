@@ -117,11 +117,13 @@ jobs:
       
       - name: Set environment variables
         run: |
-          echo "API_BASE_URL=${{ vars.API_BASE_URL }}" >> $GITHUB_ENV
+          echo "API_BASE_URL=${{ secrets.API_BASE_URL }}" >> $GITHUB_ENV
           echo "USER_POOL_ID=${{ vars.USER_POOL_ID }}" >> $GITHUB_ENV
           echo "USER_POOL_CLIENT_ID=${{ vars.USER_POOL_CLIENT_ID }}" >> $GITHUB_ENV
           echo "TEST_USER_EMAIL=${{ secrets.TEST_USER_EMAIL }}" >> $GITHUB_ENV
           echo "TEST_USER_PASSWORD=${{ secrets.TEST_USER_PASSWORD }}" >> $GITHUB_ENV
+          echo "ALLOW_SMS_E2E=${{ secrets.ALLOW_SMS_E2E }}" >> $GITHUB_ENV
+          echo "LAMBDA_SMS_NAME=${{ secrets.LAMBDA_SMS_NAME }}" >> $GITHUB_ENV
         env:
           ENVIRONMENT: ${{ steps.get-env.outputs.environment }}
       
