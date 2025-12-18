@@ -33,6 +33,48 @@ variable "gpt_api_key" {
   sensitive   = true
 }
 
+# Test/e2e credentials for automated tests
+variable "test_user_email" {
+  description = "Test user email for e2e tests"
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
+variable "test_user_password" {
+  description = "Test user password for e2e tests"
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
+variable "test_user_pool_client_id" {
+  description = "Cognito user pool client ID for tests"
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
+variable "test_user_pool_client_secret" {
+  description = "Cognito user pool client secret for tests (if applicable)"
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
+variable "test_api_base_url" {
+  description = "API base URL for tests"
+  type        = string
+  default     = null
+}
+
+variable "test_user_pool_id" {
+  description = "Cognito user pool ID for tests"
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
 variable "google_client_id" {
   description = "Google client ID for cognito auth"
   type        = string

@@ -146,6 +146,7 @@ data "http" "cognito_branding_logo" {
 }
 
 resource "aws_cognito_user_pool_ui_customization" "ui" {
+  count       = var.enable_ui_customization ? 1 : 0
   user_pool_id = aws_cognito_user_pool.user_pool.id
   client_id    = aws_cognito_user_pool_client.user_pool_client.id
 

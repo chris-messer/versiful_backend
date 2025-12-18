@@ -38,6 +38,48 @@ variable "gpt_api_key" {
     sensitive   = true
     }
 
+# Test/e2e credentials (non-production)
+variable "test_user_email" {
+  description = "Test user email for e2e/authenticated tests"
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
+variable "test_user_password" {
+  description = "Test user password for e2e/authenticated tests"
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
+variable "test_user_pool_client_id" {
+  description = "Cognito User Pool Client ID for test user"
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
+variable "test_user_pool_client_secret" {
+  description = "Cognito User Pool Client Secret for test user (if applicable)"
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
+variable "test_api_base_url" {
+  description = "API base URL for tests (e.g., https://api.dev.versiful.io)"
+  type        = string
+  default     = null
+}
+
+variable "test_user_pool_id" {
+  description = "Cognito User Pool ID for test user"
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
 variable "domain_name" {
   description = "Domain name for the environment"
     }

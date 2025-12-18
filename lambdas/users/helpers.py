@@ -41,6 +41,11 @@ def update_user_settings(event, headers):
         user_id = event["requestContext"]["authorizer"]["userId"]
         body = json.loads(event["body"])
 
+        # Ensure the user item exists before attempting an update
+        existing = table.get_item(Key={"userId": user_id})
+        if "Item" not in existing:
+            table.put_item(Item={"userId": user_id})
+
         update_expression = "SET "
         expression_attribute_values = {}
         expression_attribute_names = {}
@@ -66,7 +71,6 @@ def update_user_settings(event, headers):
             UpdateExpression=update_expression,
             ExpressionAttributeNames=expression_attribute_names,
             ExpressionAttributeValues=expression_attribute_values,
-            ConditionExpression=Attr("userId").exists(),  # Ensures user exists
             ReturnValues="UPDATED_NEW"
         )
 

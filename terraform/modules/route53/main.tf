@@ -18,6 +18,7 @@ resource "aws_route53_record" "cdn_alias" {
   zone_id = data.aws_route53_zone.zone.zone_id
   name    = local.domain
   type    = "A"  # Must be 'A' for an alias record
+  allow_overwrite = true
   alias {
     name                   = var.cdn_domain_name  # Target domain (CloudFront distribution, ELB, etc.)
     zone_id                = "Z2FDTNDATAQYW2"  # Hosted zone ID of the target service

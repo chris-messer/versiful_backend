@@ -33,3 +33,9 @@ variable "google_client_secret" {
 variable "aws_route53_zone_id" {
     description = "Route 53 Zone ID"
     }
+
+variable "enable_ui_customization" {
+  description = "Enable Cognito Hosted UI customization (requires domain present)"
+  type        = bool
+  default     = false
+}

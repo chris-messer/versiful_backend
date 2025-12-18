@@ -22,6 +22,7 @@ node_modules/
 
 # Environment variables
 .env
+.env.test.generated
 
 # Ignore Terraform state files (VERY IMPORTANT!)
 *.tfstate

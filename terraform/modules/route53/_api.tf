@@ -19,6 +19,7 @@ resource "aws_route53_record" "api_dns" {
   zone_id = data.aws_route53_zone.zone.zone_id
   name    = local.api_domain
   type    = "A"
+  allow_overwrite = true
 
   alias {
     name                   = var.apiGateway_target_domain_name

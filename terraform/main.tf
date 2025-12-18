@@ -35,6 +35,14 @@ module "secrets" {
   twilio_account_sid = var.twilio_account_sid
   gpt_api_key        = var.gpt_api_key
   AWS_S3_IAM_SECRET  = module.s3.AWS_S3_IAM_SECRET
+
+  # test/e2e credentials
+  test_user_email             = var.test_user_email
+  test_user_password          = var.test_user_password
+  test_user_pool_client_id    = var.test_user_pool_client_id
+  test_user_pool_client_secret= var.test_user_pool_client_secret
+  test_api_base_url           = var.test_api_base_url
+  test_user_pool_id           = var.test_user_pool_id
 }
 
 module "s3" {

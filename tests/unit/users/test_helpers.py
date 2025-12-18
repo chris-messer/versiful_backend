@@ -127,6 +127,7 @@ def test_update_user_settings_success(mock_dynamodb_table):
     """Test updating user settings with valid fields."""
     from lambdas.users.helpers import update_user_settings
     
+    mock_dynamodb_table.get_item.return_value = {"Item": {"userId": "user-123"}}
     mock_dynamodb_table.update_item.return_value = {}
     
     event = {
@@ -142,6 +143,7 @@ def test_update_user_settings_success(mock_dynamodb_table):
     assert result["statusCode"] == 200
     body = json.loads(result["body"])
     assert body["message"] == "Settings updated"
+    mock_dynamodb_table.get_item.assert_called_once()
     mock_dynamodb_table.update_item.assert_called_once()
 
 
@@ -163,21 +165,23 @@ def test_update_user_settings_no_valid_fields(mock_dynamodb_table):
 
 
 @pytest.mark.unit
-def test_update_user_settings_user_not_exists(mock_dynamodb_table):
-    """Test update when user doesn't exist."""
+def test_update_user_settings_creates_missing_user(mock_dynamodb_table):
+    """Test update when user does not exist: should create then update without error."""
     from lambdas.users.helpers import update_user_settings
     
-    mock_dynamodb_table.update_item.side_effect = ClientError(
-        {"Error": {"Code": "ConditionalCheckFailedException"}},
-        "update_item"
-    )
+    mock_dynamodb_table.get_item.return_value = {}
+    mock_dynamodb_table.put_item.return_value = {}
+    mock_dynamodb_table.update_item.return_value = {}
     
     event = {
         "requestContext": {"authorizer": {"userId": "user-123"}},
-        "body": json.dumps({"isSubscribed": True})
+        "body": json.dumps({"isRegistered": True})
     }
     
     result = update_user_settings(event, {})
     
-    assert result["statusCode"] == 500
+    assert result["statusCode"] == 200
+    mock_dynamodb_table.get_item.assert_called_once()
+    mock_dynamodb_table.put_item.assert_called_once()
+    mock_dynamodb_table.update_item.assert_called_once()
 

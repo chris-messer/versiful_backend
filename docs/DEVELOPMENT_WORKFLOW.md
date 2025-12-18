@@ -361,6 +361,15 @@ git rebase origin/dev
 git push --force-with-lease origin feature/my-feature
 ```
 
+## Terraform Deployments (per environment)
+
+- Always run Terraform through the helper to bind backend + vars to the target env:
+  - `cd terraform`
+  - `./scripts/tf-env.sh dev plan` (or `staging` / `prod`)
+  - `./scripts/tf-env.sh dev apply`
+- The script reconfigures the backend each run, so you don’t accidentally push staging into the dev state key.
+- If you run Terraform manually, you must pass both `-backend-config=backend.<env>.hcl -reconfigure` **and** `-var-file=<env>.tfvars`, and ensure `var.environment` matches the env name.
+
 ## Best Practices
 
 ### ✅ Do's
