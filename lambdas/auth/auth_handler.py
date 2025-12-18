@@ -48,8 +48,15 @@ def handler(event, context):
 
         ROUTES = {
             ("/auth/callback", "POST"): handle_auth,
+            ("/auth/login", "POST"): handle_login,
+            ("/auth/signup", "POST"): handle_signup,
             ("/auth/refresh", "POST"): handle_refresh,
             ("/auth/logout", "POST"): handle_logout,
+            ("/auth/login", "OPTIONS"): handle_options,
+            ("/auth/signup", "OPTIONS"): handle_options,
+            ("/auth/callback", "OPTIONS"): handle_options,
+            ("/auth/refresh", "OPTIONS"): handle_options,
+            ("/auth/logout", "OPTIONS"): handle_options,
         }
         #     return rval
         handler = ROUTES.get((route, method), None)
@@ -123,6 +130,130 @@ def handle_auth(event):
         logging.error(f"Error in authentication: {str(e)}")
         return error_response(500, 'Internal server error')
 
+
+def handle_login(event):
+    try:
+        body = json.loads(event.get('body', '{}'))
+        username = body.get('username')
+        password = body.get('password')
+
+        if not username or not password:
+            return error_response(400, 'Missing username or password')
+
+        auth_response = cognito_client.initiate_auth(
+            AuthFlow='USER_PASSWORD_AUTH',
+            AuthParameters={
+                'USERNAME': username,
+                'PASSWORD': password
+            },
+            ClientId=CLIENT_ID
+        )
+
+        auth_result = auth_response.get('AuthenticationResult', {})
+        id_token = auth_result.get('IdToken')
+        access_token = auth_result.get('AccessToken')
+        refresh_token = auth_result.get('RefreshToken')
+
+        if not id_token or not access_token:
+            return error_response(400, 'Authentication failed')
+
+        SameSite = "None; " if env == 'dev' else 'Strict'
+        cookie_headers = [
+            f"id_token={id_token}; HttpOnly; Secure; SameSite={SameSite}; Path=/; Max-Age={60 * 60}",
+            f"access_token={access_token}; HttpOnly; Secure; SameSite={SameSite}; Path=/; Max-Age={60 * 60}"
+        ]
+
+        if refresh_token:
+            cookie_headers.append(
+                f"refresh_token={refresh_token}; HttpOnly; Secure; SameSite={SameSite}; Path=/; Max-Age={60 * 60 * 24 * 30}"
+            )  # 30 days
+
+        return {
+            'statusCode': 200,
+            'multiValueHeaders': {
+                'Set-Cookie': cookie_headers
+            },
+            'headers': get_cors_headers(),
+            'body': json.dumps({'message': 'Authentication successful'})
+        }
+
+    except cognito_client.exceptions.NotAuthorizedException:
+        return error_response(401, 'Invalid username or password')
+    except Exception as e:
+        logger.error(f"Login error: {str(e)}")
+        return error_response(500, 'Internal server error')
+
+
+def handle_signup(event):
+    try:
+        body = json.loads(event.get('body', '{}'))
+        username = body.get('username')
+        password = body.get('password')
+
+        if not username or not password:
+            return error_response(400, 'Missing username or password')
+
+        cognito_client.sign_up(
+            ClientId=CLIENT_ID,
+            Username=username,
+            Password=password,
+        )
+
+        # Attempt to auto-confirm to reduce friction; ignore if not permitted
+        try:
+            cognito_client.admin_confirm_sign_up(
+                UserPoolId=USER_POOL_ID,
+                Username=username,
+            )
+        except cognito_client.exceptions.NotAuthorizedException:
+            pass
+        except cognito_client.exceptions.UserNotFoundException:
+            pass
+
+        auth_response = cognito_client.initiate_auth(
+            AuthFlow='USER_PASSWORD_AUTH',
+            AuthParameters={
+                'USERNAME': username,
+                'PASSWORD': password
+            },
+            ClientId=CLIENT_ID
+        )
+
+        auth_result = auth_response.get('AuthenticationResult', {})
+        id_token = auth_result.get('IdToken')
+        access_token = auth_result.get('AccessToken')
+        refresh_token = auth_result.get('RefreshToken')
+
+        if not id_token or not access_token:
+            return error_response(400, 'Authentication failed')
+
+        SameSite = "None; " if env == 'dev' else 'Strict'
+        cookie_headers = [
+            f"id_token={id_token}; HttpOnly; Secure; SameSite={SameSite}; Path=/; Max-Age={60 * 60}",
+            f"access_token={access_token}; HttpOnly; Secure; SameSite={SameSite}; Path=/; Max-Age={60 * 60}"
+        ]
+
+        if refresh_token:
+            cookie_headers.append(
+                f"refresh_token={refresh_token}; HttpOnly; Secure; SameSite={SameSite}; Path=/; Max-Age={60 * 60 * 24 * 30}"
+            )  # 30 days
+
+        return {
+            'statusCode': 200,
+            'multiValueHeaders': {
+                'Set-Cookie': cookie_headers
+            },
+            'headers': get_cors_headers(),
+            'body': json.dumps({'message': 'Signup successful'})
+        }
+
+    except cognito_client.exceptions.UsernameExistsException:
+        return error_response(409, 'An account with this email already exists')
+    except cognito_client.exceptions.InvalidPasswordException as e:
+        return error_response(400, str(e))
+    except Exception as e:
+        logger.error(f"Signup error: {str(e)}")
+        return error_response(500, 'Internal server error')
 
 
 def handle_refresh(event):
@@ -201,8 +332,9 @@ def extract_cookie_value(cookie_string, cookie_name):
 
 
 def get_cors_headers():
+    origin = "http://localhost:5173" if env == "dev" else f"https://{domain}"
     return {
-        'Access-Control-Allow-Origin': "http://localhost:5173",
+        'Access-Control-Allow-Origin': origin,
         'Access-Control-Allow-Credentials': 'true',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type',
@@ -214,4 +346,12 @@ def error_response(status_code, message):
         'statusCode': status_code,
         'headers': get_cors_headers(),
         'body': json.dumps({'error': message})
+    }
+
+
+def handle_options(event):
+    return {
+        'statusCode': 200,
+        'headers': get_cors_headers(),
+        'body': json.dumps({'message': 'OK'})
     }
