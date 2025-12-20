@@ -1,13 +1,53 @@
 import json
-import boto3
 import os
+import re
+from typing import Optional
+from datetime import datetime, timezone
+
+import boto3
 from boto3.dynamodb.conditions import Attr
 
 dynamodb = boto3.resource("dynamodb")
 env = os.environ["ENVIRONMENT"]
 project_name = os.environ["PROJECT_NAME"]
 table_name = f"{env}-{project_name}-users"
+sms_usage_table_name = os.environ.get("SMS_USAGE_TABLE", f"{env}-{project_name}-sms-usage")
 table = dynamodb.Table(table_name)
+sms_usage_table = dynamodb.Table(sms_usage_table_name)
+
+
+def normalize_phone_number(raw: str) -> Optional[str]:
+    """Normalize to E.164 (+1########## for US defaults). Return None if invalid."""
+    if not raw:
+        return None
+    digits = re.sub(r"[^\d+]", "", raw)
+    if digits.startswith("+"):
+        digits_only = re.sub(r"[^\d]", "", digits)
+        if 10 <= len(digits_only) <= 15:
+            return f"+{digits_only}"
+        return None
+    digits_only = re.sub(r"[^\d]", "", raw)
+    if len(digits_only) == 10:
+        return f"+1{digits_only}"
+    if len(digits_only) == 11 and digits_only.startswith("1"):
+        return f"+{digits_only}"
+    return None
+
+
+def ensure_sms_usage_record(phone_number: str, user_id: str):
+    """Create or update sms-usage record with userId for the phone."""
+    now = datetime.now(timezone.utc).isoformat()
+    sms_usage_table.update_item(
+        Key={"phoneNumber": phone_number},
+        UpdateExpression=(
+            "SET userId = if_not_exists(userId, :userId), "
+            "updatedAt = :now"
+        ),
+        ExpressionAttributeValues={
+            ":userId": user_id,
+            ":now": now,
+        },
+    )
 
 
 def create_user(event, headers):
@@ -52,10 +92,22 @@ def update_user_settings(event, headers):
         update_fields = []
 
         for key, value in body.items():
-            if value is not None:  # Ignore null values
-                update_fields.append(f"#{key} = :{key}")
-                expression_attribute_values[f":{key}"] = value
-                expression_attribute_names[f"#{key}"] = key
+            if value is None:
+                continue  # Ignore null values
+
+            if key == "phoneNumber":
+                normalized = normalize_phone_number(value)
+                if not normalized:
+                    return {
+                        "statusCode": 400,
+                        "body": json.dumps({"message": "Invalid phone number"})
+                    }
+                value = normalized
+                ensure_sms_usage_record(value, user_id)
+
+            update_fields.append(f"#{key} = :{key}")
+            expression_attribute_values[f":{key}"] = value
+            expression_attribute_names[f"#{key}"] = key
 
         if not update_fields:
             return {

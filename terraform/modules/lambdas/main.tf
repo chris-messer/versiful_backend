@@ -29,7 +29,7 @@ resource "aws_iam_policy" "dynamodb_access" {
       {
         Effect   = "Allow"
         Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"]
-        Resource = var.users_dynamodb_arn
+        Resource = [var.users_dynamodb_arn, var.sms_usage_dynamodb_arn]
       }
     ]
   })

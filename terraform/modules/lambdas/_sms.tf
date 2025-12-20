@@ -39,7 +39,12 @@ resource "aws_lambda_function" "sms_function" {
 
   environment {
     variables = {
-      ENV_VAR = "sms_value"
+      ENVIRONMENT       = var.environment
+      PROJECT_NAME      = var.project_name
+      SMS_USAGE_TABLE   = "${var.environment}-${var.project_name}-sms-usage"
+      USERS_TABLE       = "${var.environment}-${var.project_name}-users"
+      FREE_MONTHLY_LIMIT= "5"
+      NUDGE_LIMIT       = "3"
     }
 
   }

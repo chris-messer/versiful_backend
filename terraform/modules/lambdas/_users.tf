@@ -42,6 +42,8 @@ resource "aws_lambda_function" "users_function" {
     variables = {
       ENVIRONMENT = var.environment
       PROJECT_NAME = var.project_name
+      SMS_USAGE_TABLE = "${var.environment}-${var.project_name}-sms-usage"
+      USERS_TABLE     = "${var.environment}-${var.project_name}-users"
     }
 
   }

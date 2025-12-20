@@ -34,6 +34,10 @@ variable "users_dynamodb_arn" {
     description = "ARN of the dynamodb table for users"
     }
 
+variable "sms_usage_dynamodb_arn" {
+    description = "ARN of the dynamodb table for sms usage"
+    }
+
 variable "user_pool_client_id" {
     description = "Cognito client_id"
     }

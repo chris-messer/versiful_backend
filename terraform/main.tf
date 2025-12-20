@@ -111,6 +111,7 @@ module "lambdas" {
   secret_arn               = module.secrets.secret_arn
   apiGateway_lambda_api_id = module.apiGateway.apiGateway_lambda_api_id
   users_dynamodb_arn       = module.dynamodb.users_dynamodb_arn
+  sms_usage_dynamodb_arn   = module.dynamodb.sms_usage_dynamodb_arn
   domain_name              = local.domain
   project_name             = local.project_name
   environment              = local.environment
