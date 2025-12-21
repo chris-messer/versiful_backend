@@ -30,11 +30,11 @@ data "archive_file" "users_zip" {
 resource "aws_lambda_function" "users_function" {
   function_name = "${var.environment}-${var.project_name}-users_function"
   handler       = "users_handler.handler"
-  runtime       = "python3.9"
+  runtime       = "python3.11"
   role          = aws_iam_role.lambda_exec_role.arn
   filename         = data.archive_file.users_zip.output_path
   source_code_hash = data.archive_file.users_zip.output_base64sha256
-  layers = [aws_lambda_layer_version.shared_dependencies.arn, "arn:aws:lambda:us-east-1:017000801446:layer:AWSLambdaPowertoolsPythonV3-python39-x86_64:6"]
+  # No external dependencies needed - uses boto3 from runtime
   # depends_on = [null_resource.package_users]
   timeout       = 30
 

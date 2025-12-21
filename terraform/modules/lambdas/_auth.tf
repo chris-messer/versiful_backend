@@ -30,11 +30,14 @@ data "archive_file" "auth_zip" {
 resource "aws_lambda_function" "auth_function" {
   function_name = "${var.environment}-${var.project_name}-auth_function"
   handler       = "auth_handler.handler"
-  runtime       = "python3.9"
+  runtime       = "python3.11"
   role          = aws_iam_role.lambda_exec_role.arn
   filename         = data.archive_file.auth_zip.output_path
   source_code_hash = data.archive_file.auth_zip.output_base64sha256
-  layers = [aws_lambda_layer_version.shared_dependencies.arn, "arn:aws:lambda:us-east-1:017000801446:layer:AWSLambdaPowertoolsPythonV3-python39-x86_64:6"]
+  layers = [
+    aws_lambda_layer_version.core_layer.arn,
+    aws_lambda_layer_version.jwt_layer.arn
+  ]
   # depends_on = [null_resource.package_auth]
   timeout       = 30
 
@@ -131,11 +134,14 @@ data "archive_file" "jwt_authorizer_zip" {
 resource "aws_lambda_function" "jwt_authorizer" {
   function_name = "${var.environment}-${var.project_name}-jwt_authorizer"
   handler       = "jwt_authorizer.handler"
-  runtime       = "python3.9"
+  runtime       = "python3.11"
   role          = aws_iam_role.lambda_exec_role.arn
   filename      = data.archive_file.jwt_authorizer_zip.output_path
   source_code_hash = data.archive_file.jwt_authorizer_zip.output_base64sha256
-  layers = [aws_lambda_layer_version.shared_dependencies.arn, "arn:aws:lambda:us-east-1:017000801446:layer:AWSLambdaPowertoolsPythonV3-python39-x86_64:6"]
+  layers = [
+    aws_lambda_layer_version.core_layer.arn,
+    aws_lambda_layer_version.jwt_layer.arn
+  ]
   # depends_on = [null_resource.package_authorizer]
   timeout       = 30
 
