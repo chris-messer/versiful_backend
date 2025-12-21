@@ -33,7 +33,10 @@ resource "aws_lambda_function" "sms_function" {
   role          = aws_iam_role.lambda_exec_role.arn
   filename      = data.archive_file.sms_zip.output_path
   source_code_hash = data.archive_file.sms_zip.output_base64sha256
-  # Layers will be added after refactor - currently using self-contained deployment
+  layers = [
+    aws_lambda_layer_version.core_layer.arn,
+    aws_lambda_layer_version.sms_layer.arn
+  ]
   # depends_on = [null_resource.package_sms]
   timeout       = 30
 

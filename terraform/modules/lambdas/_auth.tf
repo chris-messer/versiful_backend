@@ -34,7 +34,10 @@ resource "aws_lambda_function" "auth_function" {
   role          = aws_iam_role.lambda_exec_role.arn
   filename         = data.archive_file.auth_zip.output_path
   source_code_hash = data.archive_file.auth_zip.output_base64sha256
-  # Layers will be added after refactor - currently using self-contained deployment
+  layers = [
+    aws_lambda_layer_version.core_layer.arn,
+    aws_lambda_layer_version.jwt_layer.arn
+  ]
   # depends_on = [null_resource.package_auth]
   timeout       = 30
 
@@ -135,7 +138,10 @@ resource "aws_lambda_function" "jwt_authorizer" {
   role          = aws_iam_role.lambda_exec_role.arn
   filename      = data.archive_file.jwt_authorizer_zip.output_path
   source_code_hash = data.archive_file.jwt_authorizer_zip.output_base64sha256
-  # Layers will be added after refactor - currently using self-contained deployment
+  layers = [
+    aws_lambda_layer_version.core_layer.arn,
+    aws_lambda_layer_version.jwt_layer.arn
+  ]
   # depends_on = [null_resource.package_authorizer]
   timeout       = 30
 

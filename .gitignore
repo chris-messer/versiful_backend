@@ -61,3 +61,5 @@ terraform.rc
 **/__pycache__/
 .scannerwork/
 */__pycache__/
+lambdas/layers/*/python/
+lambdas/layers/*/*.zip
