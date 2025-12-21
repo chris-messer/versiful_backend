@@ -29,11 +29,11 @@ data "archive_file" "sms_zip" {
 resource "aws_lambda_function" "sms_function" {
   function_name = "${var.environment}-sms_function"
   handler       = "sms_handler.handler"
-  runtime       = "python3.9"
+  runtime       = "python3.11"
   role          = aws_iam_role.lambda_exec_role.arn
   filename      = data.archive_file.sms_zip.output_path
   source_code_hash = data.archive_file.sms_zip.output_base64sha256
-  layers = [aws_lambda_layer_version.shared_dependencies.arn, "arn:aws:lambda:us-east-1:017000801446:layer:AWSLambdaPowertoolsPythonV3-python39-x86_64:6"]
+  # Layers will be added after refactor - currently using self-contained deployment
   # depends_on = [null_resource.package_sms]
   timeout       = 30
 
