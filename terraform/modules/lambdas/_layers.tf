@@ -13,7 +13,7 @@ resource "null_resource" "package_core_layer" {
       cd ${path.module}/../../../lambdas/layers/core && \
       rm -rf python && \
       mkdir python && \
-      pip install -r requirements.txt -t python && \
+      pip install -r requirements.txt -t python --platform manylinux2014_x86_64 --only-binary=:all: --python-version 3.11 && \
       zip -r layer.zip python
     EOT
   }
@@ -43,7 +43,7 @@ resource "null_resource" "package_jwt_layer" {
       cd ${path.module}/../../../lambdas/layers/jwt && \
       rm -rf python && \
       mkdir python && \
-      pip install -r requirements.txt -t python && \
+      pip install -r requirements.txt -t python --platform manylinux2014_x86_64 --only-binary=:all: --python-version 3.11 && \
       zip -r layer.zip python
     EOT
   }
@@ -73,7 +73,7 @@ resource "null_resource" "package_sms_layer" {
       cd ${path.module}/../../../lambdas/layers/sms && \
       rm -rf python && \
       mkdir python && \
-      pip install -r requirements.txt -t python && \
+      pip install -r requirements.txt -t python --platform manylinux2014_x86_64 --only-binary=:all: --python-version 3.11 && \
       zip -r layer.zip python
     EOT
   }
