@@ -113,7 +113,9 @@ def handle_checkout_completed(session):
     
     # Get subscription details
     subscription = stripe.Subscription.retrieve(subscription_id)
-    plan_interval = subscription["items"]["data"][0]["price"]["recurring"]["interval"]
+    
+    # Access Stripe object attributes (they support both dict and attribute access)
+    plan_interval = subscription.items.data[0].price.recurring.interval
     plan = "monthly" if plan_interval == "month" else "annual"
     
     table.update_item(
@@ -122,22 +124,25 @@ def handle_checkout_completed(session):
             SET stripeCustomerId = :cid,
                 stripeSubscriptionId = :sid,
                 isSubscribed = :sub,
-                plan = :plan,
+                #plan = :plan,
                 plan_monthly_cap = :cap,
                 subscriptionStatus = :status,
                 currentPeriodEnd = :period_end,
                 cancelAtPeriodEnd = :cancel,
                 updatedAt = :now
         """,
+        ExpressionAttributeNames={
+            "#plan": "plan"
+        },
         ExpressionAttributeValues={
             ":cid": customer_id,
             ":sid": subscription_id,
             ":sub": True,
             ":plan": plan,
             ":cap": -1,  # Unlimited for paid plans
-            ":status": subscription["status"],
-            ":period_end": int(subscription["current_period_end"]),
-            ":cancel": subscription.get("cancel_at_period_end", False),
+            ":status": subscription.status,
+            ":period_end": int(subscription.current_period_end),
+            ":cancel": getattr(subscription, 'cancel_at_period_end', False),
             ":now": datetime.now(timezone.utc).isoformat()
         }
     )
@@ -176,13 +181,16 @@ def handle_subscription_updated(subscription):
         Key={"userId": user["userId"]},
         UpdateExpression="""
             SET subscriptionStatus = :status,
-                plan = :plan,
+                #plan = :plan,
                 plan_monthly_cap = :cap,
                 currentPeriodEnd = :period_end,
                 cancelAtPeriodEnd = :cancel,
                 isSubscribed = :sub,
                 updatedAt = :now
         """,
+        ExpressionAttributeNames={
+            "#plan": "plan"
+        },
         ExpressionAttributeValues={
             ":status": subscription["status"],
             ":plan": plan,
@@ -218,11 +226,14 @@ def handle_subscription_deleted(subscription):
         Key={"userId": user["userId"]},
         UpdateExpression="""
             SET isSubscribed = :sub,
-                plan = :plan,
+                #plan = :plan,
                 plan_monthly_cap = :cap,
                 subscriptionStatus = :status,
                 updatedAt = :now
         """,
+        ExpressionAttributeNames={
+            "#plan": "plan"
+        },
         ExpressionAttributeValues={
             ":sub": False,
             ":plan": "free",
@@ -268,9 +279,9 @@ def handle_payment_failed(invoice):
                 updatedAt = :now
         """,
         ExpressionAttributeValues={
-            ":status": subscription["status"],  # Will be "past_due" or "unpaid"
-            ":sub": subscription["status"] == "past_due",  # Still subscribed if past_due
-            ":cap": -1 if subscription["status"] == "past_due" else 5,  # Keep unlimited if past_due
+            ":status": subscription.status,  # Will be "past_due" or "unpaid"
+            ":sub": subscription.status == "past_due",  # Still subscribed if past_due
+            ":cap": -1 if subscription.status == "past_due" else 5,  # Keep unlimited if past_due
             ":now": datetime.now(timezone.utc).isoformat()
         }
     )
@@ -310,10 +321,10 @@ def handle_payment_succeeded(invoice):
                 updatedAt = :now
         """,
         ExpressionAttributeValues={
-            ":status": subscription["status"],
+            ":status": subscription.status,
             ":sub": True,
             ":cap": -1,  # Unlimited for paid plans
-            ":period_end": int(subscription["current_period_end"]),
+            ":period_end": int(subscription.current_period_end),
             ":now": datetime.now(timezone.utc).isoformat()
         }
     )
