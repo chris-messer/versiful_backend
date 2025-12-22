@@ -57,6 +57,13 @@ class AgentService:
             max_tokens=sms_config.get('max_tokens', 300)
         )
         
+        # Initialize title generation LLM (using GPT-4o-mini for cost efficiency)
+        self.title_llm = ChatOpenAI(
+            model='gpt-4o-mini',
+            temperature=0.5,
+            max_tokens=50
+        )
+        
         logger.info("AgentService initialized with model: %s", llm_config['model'])
     
     def _check_guardrails(self, message: str) -> tuple[bool, Optional[str], bool]:
@@ -191,7 +198,7 @@ class AgentService:
     
     def get_conversation_title(self, messages: List[Dict[str, str]]) -> str:
         """
-        Generate a title for a conversation based on initial messages
+        Generate a concise title for a conversation using GPT-4o-mini
         
         Args:
             messages: List of messages in the conversation
@@ -202,18 +209,49 @@ class AgentService:
         if not messages:
             return "New Conversation"
         
-        # Get first user message
-        first_user_msg = next((m for m in messages if m['role'] == 'user'), None)
-        if not first_user_msg:
-            return "New Conversation"
+        # Build a summary of the conversation for title generation
+        conversation_text = ""
+        for msg in messages[:10]:  # Only use first 10 messages to keep context manageable
+            role = msg['role'].capitalize()
+            content = msg['content'][:200]  # Limit message length
+            conversation_text += f"{role}: {content}\n\n"
         
-        content = first_user_msg['content']
+        # Create prompt for title generation
+        title_prompt = f"""Based on the following conversation, generate a very short, descriptive title (maximum 4-6 words).
+The title should capture the main topic or theme of the conversation.
+Do not use quotes, colons, or special characters. Just provide the plain title.
+
+Conversation:
+{conversation_text}
+
+Title:"""
         
-        # Simple title generation: take first sentence or 50 chars
-        title = content.split('.')[0].split('?')[0].split('!')[0]
-        title = title[:47] + "..." if len(title) > 50 else title
-        
-        return title or "New Conversation"
+        try:
+            # Generate title using GPT-4o-mini
+            response = self.title_llm.invoke([HumanMessage(content=title_prompt)])
+            title = response.content.strip()
+            
+            # Clean up the title
+            title = title.replace('"', '').replace("'", '').strip()
+            
+            # Ensure it's not too long
+            if len(title) > 50:
+                title = title[:47] + "..."
+            
+            logger.info("Generated conversation title: %s", title)
+            return title if title else "New Conversation"
+            
+        except Exception as e:
+            logger.error("Error generating title: %s", str(e))
+            # Fallback to simple title generation
+            first_user_msg = next((m for m in messages if m['role'] == 'user'), None)
+            if not first_user_msg:
+                return "New Conversation"
+            
+            content = first_user_msg['content']
+            title = content.split('.')[0].split('?')[0].split('!')[0]
+            title = title[:47] + "..." if len(title) > 50 else title
+            return title or "New Conversation"
 
 
 def get_agent_service(api_key: str = None) -> AgentService:

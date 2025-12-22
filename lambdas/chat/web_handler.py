@@ -13,7 +13,7 @@ from decimal import Decimal
 import boto3
 from botocore.exceptions import ClientError
 
-from chat_handler import get_message_history
+from chat_handler import get_message_history, get_agent
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -275,6 +275,27 @@ def invoke_chat_handler(
         return {'success': False, 'error': str(e)}
 
 
+def generate_ai_title(messages: List[Dict[str, Any]]) -> str:
+    """
+    Generate an AI-powered title using GPT-4o-mini
+    
+    Args:
+        messages: List of conversation messages
+        
+    Returns:
+        A short, descriptive title
+    """
+    try:
+        agent = get_agent()
+        title = agent.get_conversation_title(messages)
+        logger.info("Generated AI title: %s", title)
+        return title
+    except Exception as e:
+        logger.error("Error generating AI title: %s", str(e))
+        # Fallback to simple generation
+        return generate_session_title(messages[0]['content'] if messages else "New Conversation")
+
+
 def generate_session_title(message: str) -> str:
     """
     Generate a short title from the first user message
@@ -355,6 +376,7 @@ def handle_post_message(event: Dict[str, Any], user_id: str) -> Dict[str, Any]:
     
     # Create new session if not provided
     is_new_session = False
+    should_generate_title = False
     if not session_id:
         session = create_session(user_id)
         session_id = session['sessionId']
@@ -369,6 +391,12 @@ def handle_post_message(event: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         # Check if this is effectively the first message (title is still default)
         if session.get('title') == 'New Conversation' and session.get('messageCount', 0) == 0:
             is_new_session = True
+        # Check if we should regenerate title (after 4-6 messages, while title is still simple)
+        message_count = session.get('messageCount', 0)
+        current_title = session.get('title', 'New Conversation')
+        # Only regenerate if current title looks like it's just the first message
+        if message_count >= 3 and (current_title == 'New Conversation' or len(current_title) > 40):
+            should_generate_title = True
     
     # Invoke chat handler
     result = invoke_chat_handler(
@@ -381,10 +409,20 @@ def handle_post_message(event: Dict[str, Any], user_id: str) -> Dict[str, Any]:
     if not result.get('success', False):
         return error_response(result.get('error', 'Error processing message'), 500)
     
-    # Generate title for new conversations based on first message
+    # Generate title for new conversations or when appropriate
     if is_new_session:
+        # Simple title for first message
         title = generate_session_title(message)
         update_session_title(user_id, session_id, title)
+    elif should_generate_title:
+        # Generate AI-powered title after a few messages
+        try:
+            messages = get_message_history(thread_id, limit=10)
+            if messages and len(messages) >= 4:
+                title = generate_ai_title(messages)
+                update_session_title(user_id, session_id, title)
+        except Exception as e:
+            logger.error("Error generating AI title: %s", str(e))
     
     return success_response({
         'message': result.get('response'),
@@ -466,6 +504,42 @@ def handle_delete_session(event: Dict[str, Any], user_id: str) -> Dict[str, Any]
         return error_response('Error archiving session', 500)
 
 
+def handle_update_session_title(event: Dict[str, Any], user_id: str) -> Dict[str, Any]:
+    """
+    PUT /chat/sessions/{sessionId}/title - Regenerate session title using AI
+    """
+    path_params = event.get('pathParameters', {})
+    session_id = path_params.get('sessionId')
+    
+    if not session_id:
+        return error_response('sessionId is required', 400)
+    
+    # Verify session exists
+    session = get_session(user_id, session_id)
+    if not session:
+        return error_response('Session not found', 404)
+    
+    # Get conversation messages
+    thread_id = session['threadId']
+    messages = get_message_history(thread_id, limit=20)
+    
+    if not messages:
+        return error_response('Cannot generate title for empty conversation', 400)
+    
+    # Generate AI-powered title
+    try:
+        title = generate_ai_title(messages)
+        update_session_title(user_id, session_id, title)
+        
+        return success_response({
+            'title': title,
+            'message': 'Title updated successfully'
+        })
+    except Exception as e:
+        logger.error("Error updating session title: %s", str(e))
+        return error_response(f'Error generating title: {str(e)}', 500)
+
+
 def handler(event, context):
     """
     Lambda handler for web chat API
@@ -476,6 +550,7 @@ def handler(event, context):
     - POST /chat/sessions - Create session
     - GET /chat/sessions/{sessionId} - Get session details
     - DELETE /chat/sessions/{sessionId} - Archive session
+    - PUT /chat/sessions/{sessionId}/title - Regenerate session title
     """
     logger.info("Web chat handler invoked: %s %s", 
                 event.get('httpMethod'), event.get('path'))
@@ -504,8 +579,10 @@ def handler(event, context):
             return handle_get_sessions(user_id)
         elif method == 'POST' and path.endswith('/chat/sessions'):
             return handle_post_session(user_id)
-        elif method == 'GET' and '/chat/sessions/' in path:
+        elif method == 'GET' and '/chat/sessions/' in path and not path.endswith('/title'):
             return handle_get_session(event, user_id)
+        elif method == 'PUT' and path.endswith('/title'):
+            return handle_update_session_title(event, user_id)
         elif method == 'DELETE' and '/chat/sessions/' in path:
             return handle_delete_session(event, user_id)
         else:

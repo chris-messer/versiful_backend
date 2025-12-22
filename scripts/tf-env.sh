@@ -37,3 +37,4 @@ terraform init -backend-config="$BACKEND_FILE" -reconfigure >/dev/null
 echo "==> Running: terraform $* -var-file=$TFVARS_FILE"
 terraform "$@" -var-file="$TFVARS_FILE"
 
+

@@ -255,7 +255,7 @@ def handler(event, context):
             }
 
         gpt_response = chat_result.get('response', '')
-        
+
         logger.info("Sending Message...")
         send_message(from_num_normalized, gpt_response)
 

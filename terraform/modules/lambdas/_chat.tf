@@ -190,6 +190,21 @@ resource "aws_apigatewayv2_route" "chat_session_delete_route" {
   authorizer_id      = var.jwt_auth_id
 }
 
+# API Gateway Integration - PUT /chat/sessions/{sessionId}/title
+resource "aws_apigatewayv2_integration" "chat_session_title_update_integration" {
+  api_id           = var.apiGateway_lambda_api_id
+  integration_type = "AWS_PROXY"
+  integration_uri  = aws_lambda_function.web_chat_function.invoke_arn
+}
+
+resource "aws_apigatewayv2_route" "chat_session_title_update_route" {
+  api_id             = var.apiGateway_lambda_api_id
+  route_key          = "PUT /chat/sessions/{sessionId}/title"
+  target             = "integrations/${aws_apigatewayv2_integration.chat_session_title_update_integration.id}"
+  authorization_type = "CUSTOM"
+  authorizer_id      = var.jwt_auth_id
+}
+
 # CORS routes for chat endpoints
 resource "aws_apigatewayv2_route" "chat_message_options" {
   api_id    = var.apiGateway_lambda_api_id
@@ -207,5 +222,11 @@ resource "aws_apigatewayv2_route" "chat_session_detail_options" {
   api_id    = var.apiGateway_lambda_api_id
   route_key = "OPTIONS /chat/sessions/{sessionId}"
   target    = "integrations/${aws_apigatewayv2_integration.chat_session_get_integration.id}"
+}
+
+resource "aws_apigatewayv2_route" "chat_session_title_options" {
+  api_id    = var.apiGateway_lambda_api_id
+  route_key = "OPTIONS /chat/sessions/{sessionId}/title"
+  target    = "integrations/${aws_apigatewayv2_integration.chat_session_title_update_integration.id}"
 }
 
