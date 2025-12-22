@@ -33,9 +33,46 @@ ALLOWED_REDIRECT_URIS = [
 ]
 
 cognito_client = boto3.client('cognito-idp')
+dynamodb = boto3.resource('dynamodb')
 
 CLIENT_ID = os.environ['CLIENT_ID']  # add to tf outputs and pass in through lambda
 USER_POOL_ID = os.environ['USER_POOL_ID'] # add to tf outputs and pass in through lambda
+
+# DynamoDB table
+table_name = f"{env}-{project_name}-users"
+users_table = dynamodb.Table(table_name)
+
+
+def create_or_update_user_email(user_id, email):
+    """
+    Create or update user record in DynamoDB with email.
+    """
+    try:
+        # Check if user exists
+        response = users_table.get_item(Key={"userId": user_id})
+        
+        if "Item" in response:
+            # User exists, only update email if not already set
+            if not response["Item"].get("email"):
+                users_table.update_item(
+                    Key={"userId": user_id},
+                    UpdateExpression="SET email = :email",
+                    ExpressionAttributeValues={":email": email}
+                )
+                logger.info(f"Updated email for existing user {user_id}")
+        else:
+            # Create new user with email
+            users_table.put_item(
+                Item={
+                    "userId": user_id,
+                    "email": email,
+                    "isSubscribed": False,
+                    "isRegistered": False
+                }
+            )
+            logger.info(f"Created new user {user_id} with email")
+    except Exception as e:
+        logger.error(f"Error creating/updating user email: {str(e)}")
 
 
 
@@ -106,6 +143,21 @@ def handle_auth(event):
         access_token = tokens["access_token"]
         refresh_token = tokens.get("refresh_token")  # Might not always be present
 
+        # Decode the ID token to get user info (email, sub/userId)
+        try:
+            # Decode without verification (already verified by Cognito)
+            decoded_token = jwt.decode(id_token, options={"verify_signature": False})
+            user_id = decoded_token.get("sub")  # Cognito user ID
+            email = decoded_token.get("email")  # User's email
+            
+            if user_id and email:
+                # Create or update user in DynamoDB with email
+                create_or_update_user_email(user_id, email)
+            else:
+                logger.warning(f"Could not extract user_id or email from token")
+        except Exception as e:
+            logger.error(f"Error decoding ID token: {str(e)}")
+
         # Format Set-Cookie headers correctly
         SameSite = "None; " if env == 'dev' else 'Strict'
         cookie_headers = [
@@ -156,6 +208,17 @@ def handle_login(event):
 
         if not id_token or not access_token:
             return error_response(400, 'Authentication failed')
+
+        # Decode the ID token to get user info and store email
+        try:
+            decoded_token = jwt.decode(id_token, options={"verify_signature": False})
+            user_id = decoded_token.get("sub")
+            email = decoded_token.get("email") or username  # Use username as email if not in token
+            
+            if user_id and email:
+                create_or_update_user_email(user_id, email)
+        except Exception as e:
+            logger.error(f"Error decoding ID token in login: {str(e)}")
 
         SameSite = "None; " if env == 'dev' else 'Strict'
         cookie_headers = [
@@ -226,6 +289,17 @@ def handle_signup(event):
 
         if not id_token or not access_token:
             return error_response(400, 'Authentication failed')
+
+        # Decode the ID token to get user info and store email
+        try:
+            decoded_token = jwt.decode(id_token, options={"verify_signature": False})
+            user_id = decoded_token.get("sub")
+            email = decoded_token.get("email") or username  # Use username as email if not in token
+            
+            if user_id and email:
+                create_or_update_user_email(user_id, email)
+        except Exception as e:
+            logger.error(f"Error decoding ID token in signup: {str(e)}")
 
         SameSite = "None; " if env == 'dev' else 'Strict'
         cookie_headers = [

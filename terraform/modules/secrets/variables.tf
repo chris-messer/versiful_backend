@@ -86,4 +86,16 @@ variable "domain_name" {
 
 variable "AWS_S3_IAM_SECRET" {
     description = "IAM secret for github action CI/CD setup"
-    }
+}
+
+variable "stripe_publishable_key" {
+  description = "Stripe publishable key"
+  type        = string
+  sensitive   = true
+}
+
+variable "stripe_secret_key" {
+  description = "Stripe secret key"
+  type        = string
+  sensitive   = true
+}

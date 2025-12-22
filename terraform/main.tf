@@ -43,6 +43,10 @@ module "secrets" {
   test_user_pool_client_secret= var.test_user_pool_client_secret
   test_api_base_url           = var.test_api_base_url
   test_user_pool_id           = var.test_user_pool_id
+  
+  # Stripe keys
+  stripe_publishable_key = var.stripe_publishable_key
+  stripe_secret_key      = var.stripe_secret_key
 }
 
 module "s3" {
@@ -120,6 +124,7 @@ module "lambdas" {
   user_pool_client_id      = module.cognito.user_pool_client_id
   jwt_auth_id              = module.apiGateway.jwt_auth_id
   allowed_cors_origins     = var.allowed_cors_origins
+  frontend_domain          = var.environment == "prod" ? local.domain : "${var.environment}.${local.domain}"
 }
 
 module "cognito" {

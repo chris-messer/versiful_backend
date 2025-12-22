@@ -92,3 +92,15 @@ variable "allowed_cors_origins" {
   type        = list(string)
 }
 
+variable "stripe_publishable_key" {
+  description = "Stripe publishable key (safe to expose in frontend)"
+  type        = string
+  sensitive   = true
+}
+
+variable "stripe_secret_key" {
+  description = "Stripe secret key (backend only, never expose)"
+  type        = string
+  sensitive   = true
+}
+

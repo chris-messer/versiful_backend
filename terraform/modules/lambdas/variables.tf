@@ -54,3 +54,8 @@ variable "allowed_cors_origins" {
   description = "List of allowed CORS origins"
   type        = list(string)
 }
+
+variable "frontend_domain" {
+  description = "Frontend domain for Stripe redirect URLs"
+  type        = string
+}

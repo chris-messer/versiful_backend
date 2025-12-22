@@ -103,6 +103,15 @@ def _evaluate_usage(phone_number: str):
 
     if user_profile and user_profile.get("plan_monthly_cap") is not None:
         limit = int(user_profile["plan_monthly_cap"])
+        # -1 means unlimited (same as isSubscribed)
+        if limit == -1:
+            return {
+                "allowed": True,
+                "limit": None,
+                "usage": usage,
+                "user_profile": user_profile,
+                "reason": "unlimited_cap",
+            }
     else:
         limit = FREE_MONTHLY_LIMIT
 

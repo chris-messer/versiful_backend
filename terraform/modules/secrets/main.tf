@@ -18,6 +18,9 @@ resource "aws_secretsmanager_secret_version" "secret_version" {
     "USER_POOL_CLIENT_ID"     = var.test_user_pool_client_id,
     "USER_POOL_CLIENT_SECRET" = var.test_user_pool_client_secret,
     "API_BASE_URL"            = var.test_api_base_url,
-    "USER_POOL_ID"            = var.test_user_pool_id
+    "USER_POOL_ID"            = var.test_user_pool_id,
+    # Stripe keys
+    "stripe_publishable_key"  = var.stripe_publishable_key,
+    "stripe_secret_key"       = var.stripe_secret_key
   })
 }

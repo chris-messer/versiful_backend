@@ -3,3 +3,4 @@ twilio
 openai==1.39.0
 exceptiongroup
 cryptography
+stripe>=5.0.0
