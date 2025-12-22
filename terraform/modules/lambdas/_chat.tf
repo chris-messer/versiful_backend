@@ -69,7 +69,8 @@ resource "aws_lambda_function" "web_chat_function" {
   source_code_hash = data.archive_file.web_chat_zip.output_base64sha256
   
   layers = [
-    aws_lambda_layer_version.core_layer.arn
+    aws_lambda_layer_version.core_layer.arn,
+    aws_lambda_layer_version.langchain_layer.arn
   ]
   
   timeout      = 30

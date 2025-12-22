@@ -13,12 +13,8 @@ from decimal import Decimal
 import boto3
 from botocore.exceptions import ClientError
 
-try:
-    from agent_service import get_agent_service
-    from helpers import get_secret
-except ImportError:
-    from lambdas.chat.agent_service import get_agent_service
-    from lambdas.sms.helpers import get_secret
+from agent_service import get_agent_service
+from helpers import get_secret
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

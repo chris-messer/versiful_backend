@@ -8,17 +8,26 @@ import logging
 import uuid
 from datetime import datetime
 from typing import Dict, Any, List, Optional
+from decimal import Decimal
 
 import boto3
 from botocore.exceptions import ClientError
 
-try:
-    from chat_handler import get_message_history, process_chat_message
-except ImportError:
-    from lambdas.chat.chat_handler import get_message_history, process_chat_message
+from chat_handler import get_message_history
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+
+def decimal_to_number(obj):
+    """Convert Decimal objects to int or float for JSON serialization"""
+    if isinstance(obj, Decimal):
+        return int(obj) if obj % 1 == 0 else float(obj)
+    elif isinstance(obj, dict):
+        return {k: decimal_to_number(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [decimal_to_number(i) for i in obj]
+    return obj
 
 # DynamoDB setup
 dynamodb = boto3.resource('dynamodb')
@@ -70,6 +79,8 @@ def cors_headers():
 
 def success_response(body: Dict[str, Any], status_code: int = 200):
     """Standard success response"""
+    # Convert any Decimal objects to numbers
+    body = decimal_to_number(body)
     return {
         'statusCode': status_code,
         'headers': cors_headers(),
@@ -264,6 +275,63 @@ def invoke_chat_handler(
         return {'success': False, 'error': str(e)}
 
 
+def generate_session_title(message: str) -> str:
+    """
+    Generate a short title from the first user message
+    
+    Args:
+        message: The first user message
+        
+    Returns:
+        A short title (max 50 chars)
+    """
+    # Take first sentence or first 50 characters
+    title = message.strip()
+    
+    # Remove newlines
+    title = title.replace('\n', ' ').replace('\r', '')
+    
+    # Find first sentence
+    for ending in ['. ', '! ', '? ', '\n']:
+        if ending in title:
+            title = title.split(ending)[0] + ending.strip()
+            break
+    
+    # Truncate to 50 chars
+    if len(title) > 50:
+        title = title[:47] + '...'
+    
+    return title or 'New Conversation'
+
+
+def update_session_title(user_id: str, session_id: str, title: str) -> bool:
+    """
+    Update the title of a session
+    
+    Args:
+        user_id: User ID
+        session_id: Session ID
+        title: New title
+        
+    Returns:
+        True if successful
+    """
+    try:
+        sessions_table.update_item(
+            Key={'userId': user_id, 'sessionId': session_id},
+            UpdateExpression='SET title = :title, updatedAt = :now',
+            ExpressionAttributeValues={
+                ':title': title,
+                ':now': datetime.utcnow().isoformat() + 'Z'
+            }
+        )
+        logger.info("Updated session title: %s -> %s", session_id, title)
+        return True
+    except ClientError as e:
+        logger.error("Error updating session title: %s", str(e))
+        return False
+
+
 def handle_post_message(event: Dict[str, Any], user_id: str) -> Dict[str, Any]:
     """
     POST /chat/message - Send a message and get response
@@ -286,16 +354,21 @@ def handle_post_message(event: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         return error_response('message is required', 400)
     
     # Create new session if not provided
+    is_new_session = False
     if not session_id:
         session = create_session(user_id)
         session_id = session['sessionId']
         thread_id = session['threadId']
+        is_new_session = True
     else:
         # Verify session exists and belongs to user
         session = get_session(user_id, session_id)
         if not session:
             return error_response('Session not found', 404)
         thread_id = session['threadId']
+        # Check if this is effectively the first message (title is still default)
+        if session.get('title') == 'New Conversation' and session.get('messageCount', 0) == 0:
+            is_new_session = True
     
     # Invoke chat handler
     result = invoke_chat_handler(
@@ -307,6 +380,11 @@ def handle_post_message(event: Dict[str, Any], user_id: str) -> Dict[str, Any]:
     
     if not result.get('success', False):
         return error_response(result.get('error', 'Error processing message'), 500)
+    
+    # Generate title for new conversations based on first message
+    if is_new_session:
+        title = generate_session_title(message)
+        update_session_title(user_id, session_id, title)
     
     return success_response({
         'message': result.get('response'),
