@@ -111,40 +111,54 @@ def handle_checkout_completed(session):
     
     logger.info(f"Checkout completed for user {user_id}, subscription {subscription_id}")
     
-    # Get subscription details
-    subscription = stripe.Subscription.retrieve(subscription_id)
+    # Get subscription details - use expand to get all fields
+    subscription = stripe.Subscription.retrieve(
+        subscription_id,
+        expand=['items.data.price']
+    )
     
-    # Access Stripe object attributes (they support both dict and attribute access)
-    plan_interval = subscription.items.data[0].price.recurring.interval
+    # Access plan information
+    plan_interval = subscription['items']['data'][0]['price']['recurring']['interval']
     plan = "monthly" if plan_interval == "month" else "annual"
+    
+    # currentPeriodEnd may not be in the immediate subscription object
+    # Use billing_cycle_anchor as a fallback
+    period_end = subscription.get('current_period_end') or subscription.get('billing_cycle_anchor')
+    
+    update_expression = """
+        SET stripeCustomerId = :cid,
+            stripeSubscriptionId = :sid,
+            isSubscribed = :sub,
+            #plan = :plan,
+            plan_monthly_cap = :cap,
+            subscriptionStatus = :status,
+            cancelAtPeriodEnd = :cancel,
+            updatedAt = :now
+    """
+    
+    expression_values = {
+        ":cid": customer_id,
+        ":sid": subscription_id,
+        ":sub": True,
+        ":plan": plan,
+        ":cap": -1,  # Unlimited for paid plans
+        ":status": subscription['status'],
+        ":cancel": subscription.get('cancel_at_period_end', False),
+        ":now": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Only add currentPeriodEnd if we have it
+    if period_end:
+        update_expression += ", currentPeriodEnd = :period_end"
+        expression_values[":period_end"] = int(period_end)
     
     table.update_item(
         Key={"userId": user_id},
-        UpdateExpression="""
-            SET stripeCustomerId = :cid,
-                stripeSubscriptionId = :sid,
-                isSubscribed = :sub,
-                #plan = :plan,
-                plan_monthly_cap = :cap,
-                subscriptionStatus = :status,
-                currentPeriodEnd = :period_end,
-                cancelAtPeriodEnd = :cancel,
-                updatedAt = :now
-        """,
+        UpdateExpression=update_expression,
         ExpressionAttributeNames={
             "#plan": "plan"
         },
-        ExpressionAttributeValues={
-            ":cid": customer_id,
-            ":sid": subscription_id,
-            ":sub": True,
-            ":plan": plan,
-            ":cap": -1,  # Unlimited for paid plans
-            ":status": subscription.status,
-            ":period_end": int(subscription.current_period_end),
-            ":cancel": getattr(subscription, 'cancel_at_period_end', False),
-            ":now": datetime.now(timezone.utc).isoformat()
-        }
+        ExpressionAttributeValues=expression_values
     )
     
     logger.info(f"Updated user {user_id} with subscription {plan}")
@@ -279,9 +293,9 @@ def handle_payment_failed(invoice):
                 updatedAt = :now
         """,
         ExpressionAttributeValues={
-            ":status": subscription.status,  # Will be "past_due" or "unpaid"
-            ":sub": subscription.status == "past_due",  # Still subscribed if past_due
-            ":cap": -1 if subscription.status == "past_due" else 5,  # Keep unlimited if past_due
+            ":status": subscription['status'],  # Will be "past_due" or "unpaid"
+            ":sub": subscription['status'] == "past_due",  # Still subscribed if past_due
+            ":cap": -1 if subscription['status'] == "past_due" else 5,  # Keep unlimited if past_due
             ":now": datetime.now(timezone.utc).isoformat()
         }
     )
@@ -311,22 +325,32 @@ def handle_payment_succeeded(invoice):
     user = response["Items"][0]
     subscription = stripe.Subscription.retrieve(subscription_id)
     
+    # currentPeriodEnd may not be in the subscription object, use billing_cycle_anchor as fallback
+    period_end = subscription.get('current_period_end') or subscription.get('billing_cycle_anchor')
+    
+    update_expression = """
+        SET subscriptionStatus = :status,
+            isSubscribed = :sub,
+            plan_monthly_cap = :cap,
+            updatedAt = :now
+    """
+    
+    expression_values = {
+        ":status": subscription['status'],
+        ":sub": True,
+        ":cap": -1,  # Unlimited for paid plans
+        ":now": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Only add currentPeriodEnd if we have it
+    if period_end:
+        update_expression += ", currentPeriodEnd = :period_end"
+        expression_values[":period_end"] = int(period_end)
+    
     table.update_item(
         Key={"userId": user["userId"]},
-        UpdateExpression="""
-            SET subscriptionStatus = :status,
-                isSubscribed = :sub,
-                plan_monthly_cap = :cap,
-                currentPeriodEnd = :period_end,
-                updatedAt = :now
-        """,
-        ExpressionAttributeValues={
-            ":status": subscription.status,
-            ":sub": True,
-            ":cap": -1,  # Unlimited for paid plans
-            ":period_end": int(subscription.current_period_end),
-            ":now": datetime.now(timezone.utc).isoformat()
-        }
+        UpdateExpression=update_expression,
+        ExpressionAttributeValues=expression_values
     )
     
     logger.info(f"Confirmed subscription renewal for user {user['userId']}")
