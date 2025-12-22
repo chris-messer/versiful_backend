@@ -3,9 +3,21 @@ import os
 import re
 from typing import Optional
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import boto3
 from boto3.dynamodb.conditions import Attr
+
+# Custom JSON encoder to handle Decimal objects from DynamoDB
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            # Convert Decimal to int if it has no decimal places, otherwise to float
+            if obj % 1 == 0:
+                return int(obj)
+            else:
+                return float(obj)
+        return super(DecimalEncoder, self).default(obj)
 
 dynamodb = boto3.resource("dynamodb")
 env = os.environ["ENVIRONMENT"]
@@ -59,7 +71,7 @@ def create_user(event, headers):
     if "Item" in response:
         subscribed = response["Item"].get("isSubscribed", False)
         registered = response["Item"].get("isRegistered", False)
-        return {"statusCode": 200,"body": json.dumps({"isSubscribed": subscribed, "isRegistered": registered})}
+        return {"statusCode": 200,"body": json.dumps({"isSubscribed": subscribed, "isRegistered": registered}, cls=DecimalEncoder)}
 
     table.put_item(Item={"userId": user_id})
     return {"statusCode": 200, "body": json.dumps({"isSubscribed": False, "isRegistered": False})}
@@ -72,7 +84,7 @@ def get_user_profile(event, headers):
 
     response = table.get_item(Key={"userId": user_id})
     if "Item" in response:
-        return {"statusCode": 200, "headers": headers, "body": json.dumps(response["Item"])}
+        return {"statusCode": 200, "headers": headers, "body": json.dumps(response["Item"], cls=DecimalEncoder)}
 
     return {"statusCode": 404, "headers": headers, "body": json.dumps({"error": "User not found"})}
 

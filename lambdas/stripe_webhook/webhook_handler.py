@@ -117,13 +117,21 @@ def handle_checkout_completed(session):
         expand=['items.data.price']
     )
     
+    # LOG THE ENTIRE SUBSCRIPTION OBJECT
+    import json
+    logger.info(f"RAW SUBSCRIPTION OBJECT: {json.dumps(dict(subscription), default=str, indent=2)}")
+    
+    # LOG THE ENTIRE SUBSCRIPTION OBJECT
+    import json
+    logger.info(f"RAW SUBSCRIPTION OBJECT: {json.dumps(dict(subscription), default=str, indent=2)}")
+    
     # Access plan information
     plan_interval = subscription['items']['data'][0]['price']['recurring']['interval']
     plan = "monthly" if plan_interval == "month" else "annual"
     
-    # currentPeriodEnd may not be in the immediate subscription object
-    # Use billing_cycle_anchor as a fallback
-    period_end = subscription.get('current_period_end') or subscription.get('billing_cycle_anchor')
+    # Get current_period_end from the subscription item, NOT the subscription root
+    period_end = subscription['items']['data'][0].get('current_period_end')
+    logger.info(f"Got current_period_end from subscription item: {period_end}")
     
     update_expression = """
         SET stripeCustomerId = :cid,
@@ -143,7 +151,7 @@ def handle_checkout_completed(session):
         ":plan": plan,
         ":cap": -1,  # Unlimited for paid plans
         ":status": subscription['status'],
-        ":cancel": subscription.get('cancel_at_period_end', False),
+        ":cancel": subscription.get('cancel_at_period_end', False) or subscription.get('cancel_at') is not None,
         ":now": datetime.now(timezone.utc).isoformat()
     }
     
@@ -161,7 +169,7 @@ def handle_checkout_completed(session):
         ExpressionAttributeValues=expression_values
     )
     
-    logger.info(f"Updated user {user_id} with subscription {plan}")
+    logger.info(f"Updated user {user_id} with subscription {plan}, period_end: {period_end}")
 
 
 def handle_subscription_created(subscription):
@@ -173,9 +181,16 @@ def handle_subscription_created(subscription):
 
 def handle_subscription_updated(subscription):
     """Subscription was modified (plan change, cancellation scheduled, etc)"""
+    import json
+    
+    # LOG THE ENTIRE SUBSCRIPTION OBJECT FOR UPDATE
+    logger.info(f"RAW SUBSCRIPTION UPDATE OBJECT: {json.dumps(dict(subscription), default=str, indent=2)}")
+    
     customer_id = subscription["customer"]
     
     logger.info(f"Subscription updated for customer {customer_id}")
+    logger.info(f"cancel_at_period_end: {subscription.get('cancel_at_period_end')}")
+    logger.info(f"status: {subscription.get('status')}")
     
     # Find user by customer ID
     response = table.scan(
@@ -187,36 +202,56 @@ def handle_subscription_updated(subscription):
         return
     
     user = response["Items"][0]
+    logger.info(f"Found user: {user['userId']}, cancel_at={subscription.get('cancel_at')}, cancel_at_period_end={subscription.get('cancel_at_period_end')}")
+    
     plan_interval = subscription["items"]["data"][0]["price"]["recurring"]["interval"]
     plan = "monthly" if plan_interval == "month" else "annual"
+    
+    # Get current_period_end from subscription item
+    period_end = subscription["items"]["data"][0].get('current_period_end')
+    if not period_end:
+        logger.warning(f"No current_period_end in subscription update for {subscription['id']}")
+    
+    # Determine if subscription is being canceled
+    # Stripe sets either cancel_at_period_end=true OR cancel_at to a timestamp
+    is_canceling = subscription.get('cancel_at_period_end', False) or subscription.get('cancel_at') is not None
+    logger.info(f"Computed is_canceling: {is_canceling}")
+    
+    # Build update expression dynamically
+    update_expression = """
+        SET subscriptionStatus = :status,
+            #plan = :plan,
+            plan_monthly_cap = :cap,
+            cancelAtPeriodEnd = :cancel,
+            isSubscribed = :sub,
+            updatedAt = :now
+    """
+    
+    expression_values = {
+        ":status": subscription["status"],
+        ":plan": plan,
+        ":cap": -1 if subscription["status"] in ["active", "trialing"] else 5,
+        ":cancel": is_canceling,  # Use computed is_canceling
+        ":sub": subscription["status"] in ["active", "trialing"],
+        ":now": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Only add currentPeriodEnd if we have it
+    if period_end:
+        update_expression += ", currentPeriodEnd = :period_end"
+        expression_values[":period_end"] = int(period_end)
     
     # Update subscription details
     table.update_item(
         Key={"userId": user["userId"]},
-        UpdateExpression="""
-            SET subscriptionStatus = :status,
-                #plan = :plan,
-                plan_monthly_cap = :cap,
-                currentPeriodEnd = :period_end,
-                cancelAtPeriodEnd = :cancel,
-                isSubscribed = :sub,
-                updatedAt = :now
-        """,
+        UpdateExpression=update_expression,
         ExpressionAttributeNames={
             "#plan": "plan"
         },
-        ExpressionAttributeValues={
-            ":status": subscription["status"],
-            ":plan": plan,
-            ":cap": -1,  # Unlimited for paid plans
-            ":period_end": int(subscription["current_period_end"]),
-            ":cancel": subscription.get("cancel_at_period_end", False),
-            ":sub": subscription["status"] in ["active", "trialing"],
-            ":now": datetime.now(timezone.utc).isoformat()
-        }
+        ExpressionAttributeValues=expression_values
     )
     
-    logger.info(f"Updated subscription for user {user['userId']}: {subscription['status']}")
+    logger.info(f"Updated subscription for user {user['userId']}: {subscription['status']}, cancel_at_period_end: {subscription.get('cancel_at_period_end', False)}")
 
 
 def handle_subscription_deleted(subscription):
@@ -236,6 +271,7 @@ def handle_subscription_deleted(subscription):
     user = response["Items"][0]
     
     # Mark user as unsubscribed, revert to free plan with message cap
+    # REMOVE currentPeriodEnd to avoid showing stale billing dates
     table.update_item(
         Key={"userId": user["userId"]},
         UpdateExpression="""
@@ -243,7 +279,9 @@ def handle_subscription_deleted(subscription):
                 #plan = :plan,
                 plan_monthly_cap = :cap,
                 subscriptionStatus = :status,
+                cancelAtPeriodEnd = :cancel,
                 updatedAt = :now
+            REMOVE currentPeriodEnd
         """,
         ExpressionAttributeNames={
             "#plan": "plan"
@@ -253,11 +291,12 @@ def handle_subscription_deleted(subscription):
             ":plan": "free",
             ":cap": 5,  # Revert to free tier limit (5 messages/month)
             ":status": "canceled",
+            ":cancel": False,  # Clear the cancel flag since subscription has ended
             ":now": datetime.now(timezone.utc).isoformat()
         }
     )
     
-    logger.info(f"Reverted user {user['userId']} to free plan")
+    logger.info(f"Reverted user {user['userId']} to free plan after subscription ended")
 
 
 def handle_payment_failed(invoice):
@@ -325,8 +364,10 @@ def handle_payment_succeeded(invoice):
     user = response["Items"][0]
     subscription = stripe.Subscription.retrieve(subscription_id)
     
-    # currentPeriodEnd may not be in the subscription object, use billing_cycle_anchor as fallback
-    period_end = subscription.get('current_period_end') or subscription.get('billing_cycle_anchor')
+    # Get current_period_end from subscription item
+    period_end = subscription["items"]["data"][0].get('current_period_end')
+    if not period_end:
+        logger.warning(f"No current_period_end in subscription {subscription_id}")
     
     update_expression = """
         SET subscriptionStatus = :status,
