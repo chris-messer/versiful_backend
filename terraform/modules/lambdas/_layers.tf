@@ -111,3 +111,38 @@ output "sms_layer_arn" {
   value       = aws_lambda_layer_version.sms_layer.arn
 }
 
+# ============================================
+# LangChain Layer - langchain + langgraph (~50 MB compressed)
+# Used by: Chat function, Agent service
+# ============================================
+
+resource "null_resource" "package_langchain_layer" {
+  provisioner "local-exec" {
+    command = <<EOT
+      cd ${path.module}/../../../lambdas/layers/langchain && \
+      rm -rf python && \
+      mkdir python && \
+      pip install -r requirements.txt -t python --platform manylinux2014_x86_64 --only-binary=:all: --python-version 3.11 && \
+      zip -r layer.zip python
+    EOT
+  }
+
+  triggers = {
+    requirements = filemd5("${path.module}/../../../lambdas/layers/langchain/requirements.txt")
+  }
+}
+
+resource "aws_lambda_layer_version" "langchain_layer" {
+  filename            = "${path.module}/../../../lambdas/layers/langchain/layer.zip"
+  layer_name          = "${var.environment}-langchain-dependencies"
+  compatible_runtimes = ["python3.11"]
+  description         = "LangChain dependencies: langchain, langgraph, openai"
+  
+  depends_on = [null_resource.package_langchain_layer]
+}
+
+output "langchain_layer_arn" {
+  description = "ARN of the LangChain dependencies layer"
+  value       = aws_lambda_layer_version.langchain_layer.arn
+}
+

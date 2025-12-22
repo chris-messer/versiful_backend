@@ -2,12 +2,12 @@ import base64
 import json
 import logging
 import sys
+import os
 from datetime import datetime, timezone
 
 try:
     from helpers import (
         send_message,
-        generate_response,
         parse_url_string,
         get_sms_usage,
         consume_message_if_allowed,
@@ -21,7 +21,6 @@ try:
 except Exception:
     from lambdas.sms.helpers import (
         send_message,
-        generate_response,
         parse_url_string,
         get_sms_usage,
         consume_message_if_allowed,
@@ -32,6 +31,8 @@ except Exception:
         NUDGE_LIMIT,
         normalize_phone_number,
     )
+
+import boto3
 from twilio.twiml.messaging_response import MessagingResponse  # noqa: F401
 
 logger = logging.getLogger()
@@ -42,6 +43,14 @@ if not logger.handlers:
     handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
     logger.addHandler(handler)
 
+# Lambda client for invoking chat handler
+lambda_client = boto3.client('lambda')
+ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
+PROJECT_NAME = os.environ.get('PROJECT_NAME', 'versiful')
+CHAT_FUNCTION_NAME = os.environ.get(
+    'CHAT_FUNCTION_NAME',
+    f'{ENVIRONMENT}-{PROJECT_NAME}-chat'
+)
 
 SUBSCRIPTION_INACTIVE_MESSAGE = (
     "Your Versiful subscription is inactive. Please visit https://versiful.io to renew "
@@ -132,6 +141,52 @@ def _success_response():
     }
 
 
+def _invoke_chat_handler(thread_id: str, message: str, user_id: str = None, phone_number: str = None):
+    """
+    Invoke the chat Lambda function
+    
+    Args:
+        thread_id: Thread identifier (phone number for SMS)
+        message: User's message
+        user_id: Optional user ID
+        phone_number: Phone number
+        
+    Returns:
+        Response from chat handler
+    """
+    payload = {
+        'thread_id': thread_id,
+        'message': message,
+        'channel': 'sms',
+        'user_id': user_id,
+        'phone_number': phone_number
+    }
+    
+    logger.info("Invoking chat handler with thread_id: %s", thread_id)
+    
+    try:
+        response = lambda_client.invoke(
+            FunctionName=CHAT_FUNCTION_NAME,
+            InvocationType='RequestResponse',
+            Payload=json.dumps(payload)
+        )
+        
+        response_payload = json.loads(response['Payload'].read())
+        logger.info("Chat handler response: %s", response_payload)
+        
+        # Parse the response body
+        if response_payload.get('statusCode') == 200:
+            body = json.loads(response_payload.get('body', '{}'))
+            return body
+        else:
+            logger.error("Chat handler returned error: %s", response_payload)
+            return {'success': False, 'error': 'Chat handler error'}
+            
+    except Exception as e:
+        logger.error("Error invoking chat handler: %s", str(e))
+        return {'success': False, 'error': str(e)}
+
+
 def handler(event, context):
     logger.info("Received event: %s", event)
     if event.get("isBase64Encoded", False):
@@ -169,16 +224,26 @@ def handler(event, context):
                 logger.info("Nudge limit reached for %s", from_num_normalized)
             return _success_response()
 
-        logger.info("Fetching from GPT")
-        gpt_response = generate_response(body)
-        error_msg = None
-        if isinstance(gpt_response, dict) and gpt_response.get("error"):
-            error_msg = gpt_response["error"]
-        elif isinstance(gpt_response, str) and gpt_response.lower().startswith("error"):
-            error_msg = gpt_response
+        # Get user_id if available
+        user_id = decision.get("user_profile", {}).get("userId") if decision.get("user_profile") else None
 
-        if error_msg:
-            logger.info("GPT Error: %s", error_msg)
+        # Invoke chat handler with phone number as thread_id
+        logger.info("Invoking chat handler for SMS")
+        chat_result = _invoke_chat_handler(
+            thread_id=from_num_normalized,  # Phone number is the thread ID for SMS
+            message=body,
+            user_id=user_id,
+            phone_number=from_num_normalized
+        )
+
+        if not chat_result.get('success', False):
+            error_msg = chat_result.get('error', 'Unknown error')
+            logger.error("Chat handler error: %s", error_msg)
+            # Send a user-friendly error message
+            send_message(
+                from_num_normalized,
+                "I apologize, but I encountered an error processing your message. Please try again in a moment."
+            )
             return {
                 "statusCode": 500,
                 "headers": {
@@ -186,9 +251,11 @@ def handler(event, context):
                     "Access-Control-Allow-Methods": "OPTIONS,POST",
                     "Access-Control-Allow-Headers": "Content-Type,Authorization",
                 },
-                "body": json.dumps({"error": str(error_msg)}),
+                "body": json.dumps({"error": error_msg}),
             }
 
+        gpt_response = chat_result.get('response', '')
+        
         logger.info("Sending Message...")
         send_message(from_num_normalized, gpt_response)
 

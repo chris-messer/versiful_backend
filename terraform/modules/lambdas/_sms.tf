@@ -48,6 +48,7 @@ resource "aws_lambda_function" "sms_function" {
       USERS_TABLE       = "${var.environment}-${var.project_name}-users"
       FREE_MONTHLY_LIMIT= "5"
       NUDGE_LIMIT       = "3"
+      CHAT_FUNCTION_NAME= "${var.environment}-${var.project_name}-chat"
     }
 
   }
