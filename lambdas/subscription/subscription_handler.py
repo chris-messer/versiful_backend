@@ -173,21 +173,85 @@ def create_portal_session(event, context):
         if not return_url:
             return_url = f"https://{frontend_domain}/settings"
         
-        # Create portal session
-        portal_session = stripe.billing_portal.Session.create(
-            customer=user["stripeCustomerId"],
-            return_url=return_url
-        )
+        customer_id = user["stripeCustomerId"]
         
-        logger.info(f"Created portal session for customer: {user['stripeCustomerId']}")
-        
-        return {
-            "statusCode": 200,
-            "headers": {
-                "Content-Type": "application/json"
-            },
-            "body": json.dumps({"url": portal_session.url})
-        }
+        try:
+            # Try to create portal session with stored customer ID
+            portal_session = stripe.billing_portal.Session.create(
+                customer=customer_id,
+                return_url=return_url
+            )
+            
+            logger.info(f"Created portal session for customer: {customer_id}")
+            
+            return {
+                "statusCode": 200,
+                "headers": {
+                    "Content-Type": "application/json"
+                },
+                "body": json.dumps({"url": portal_session.url})
+            }
+            
+        except stripe.error.InvalidRequestError as e:
+            # If customer doesn't exist, try to find the correct customer by email
+            if "No such customer" in str(e):
+                logger.warning(f"Customer {customer_id} not found in Stripe, attempting to find by email")
+                
+                user_email = user.get("email")
+                if not user_email:
+                    logger.error(f"No email found for user {user_id}")
+                    raise
+                
+                # Search for customer by email
+                customers = stripe.Customer.list(email=user_email, limit=1)
+                
+                if not customers.data:
+                    logger.error(f"No Stripe customer found for email {user_email}")
+                    return {
+                        "statusCode": 404,
+                        "body": json.dumps({"error": "No Stripe customer found. Please resubscribe."})
+                    }
+                
+                # Found the customer, update DynamoDB
+                correct_customer_id = customers.data[0].id
+                logger.info(f"Found correct customer ID: {correct_customer_id}, updating DynamoDB")
+                
+                # Get their active subscription
+                subscriptions = stripe.Subscription.list(customer=correct_customer_id, status='active', limit=1)
+                subscription_id = subscriptions.data[0].id if subscriptions.data else None
+                
+                # Update DynamoDB with correct IDs
+                update_expr = "SET stripeCustomerId = :cid"
+                expr_values = {":cid": correct_customer_id}
+                
+                if subscription_id:
+                    update_expr += ", stripeSubscriptionId = :sid"
+                    expr_values[":sid"] = subscription_id
+                
+                table.update_item(
+                    Key={"userId": user_id},
+                    UpdateExpression=update_expr,
+                    ExpressionAttributeValues=expr_values
+                )
+                
+                logger.info(f"Updated user {user_id} with correct customer ID: {correct_customer_id}")
+                
+                # Retry portal creation with correct customer ID
+                portal_session = stripe.billing_portal.Session.create(
+                    customer=correct_customer_id,
+                    return_url=return_url
+                )
+                
+                return {
+                    "statusCode": 200,
+                    "headers": {
+                        "Content-Type": "application/json"
+                    },
+                    "body": json.dumps({"url": portal_session.url})
+                }
+            else:
+                # Some other Stripe error
+                raise
         
     except KeyError as e:
         logger.error(f"Missing required field: {e}")
