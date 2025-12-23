@@ -34,7 +34,8 @@ resource "aws_lambda_function" "users_function" {
   role          = aws_iam_role.lambda_exec_role.arn
   filename         = data.archive_file.users_zip.output_path
   source_code_hash = data.archive_file.users_zip.output_base64sha256
-  # No external dependencies needed - uses boto3 from runtime
+  # Use Lambda layer for Twilio and shared modules (secrets_helper, sms_notifications)
+  layers = [aws_lambda_layer_version.shared_dependencies.arn]
   # depends_on = [null_resource.package_users]
   timeout       = 30
 

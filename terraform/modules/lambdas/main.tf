@@ -187,12 +187,15 @@ resource "null_resource" "package_layer" {
       rm -rf python && \
       mkdir python && \
       pip install -r requirements.txt -t python && \
+      cp ${path.module}/../../../lambdas/shared/*.py python/ && \
       zip -r layer.zip python
     EOT
   }
 
   triggers = {
     requirements = filemd5("${path.module}/../../../lambdas/layer/requirements.txt")
+    shared_secrets = filemd5("${path.module}/../../../lambdas/shared/secrets_helper.py")
+    shared_sms = filemd5("${path.module}/../../../lambdas/shared/sms_notifications.py")
   }
 }
 resource "aws_lambda_layer_version" "shared_dependencies" {

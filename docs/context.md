@@ -29,6 +29,12 @@ This file is a quick primer for anyone jumping into a fresh LLM context. It summ
   - CORS origin: `http://localhost:5173` in dev; `https://<domain>` otherwise.
 - Users Lambda: `lambdas/users` (CRUD on user profile, phone, prefs, subscription flags). Frontend calls `POST /users` to ensure existence, `PUT /users` to update.
 - JWT authorizer: `lambdas/authorizer/jwt_authorizer.py` for protected routes.
+- SMS Notifications: `lambdas/shared/sms_notifications.py`
+  - Sends welcome SMS when user first registers phone number (includes info about 5 free messages/month and link to subscribe).
+  - Sends subscription confirmation SMS when user subscribes to paid plan.
+  - Sends cancellation SMS when user cancels subscription (moved back to free tier).
+  - Uses Twilio for SMS delivery via shared Lambda layer.
+- Stripe Webhook: `lambdas/stripe_webhook/webhook_handler.py` handles subscription lifecycle events and triggers SMS notifications.
 
 ## Frontend expectations (so backend responses stay compatible)
 - Auth cookies are expected after `/auth/login`, `/auth/signup`, `/auth/callback`, and `/auth/refresh`.

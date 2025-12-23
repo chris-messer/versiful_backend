@@ -21,6 +21,13 @@ except ImportError:
     # Fallback for local testing
     from lambdas.shared.secrets_helper import get_secret, get_secrets
 
+# Import SMS notifications helper
+try:
+    from sms_notifications import send_subscription_confirmation_sms, send_cancellation_sms
+except ImportError:
+    # Fallback for local testing
+    from lambdas.shared.sms_notifications import send_subscription_confirmation_sms, send_cancellation_sms
+
 # Setup logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -170,6 +177,20 @@ def handle_checkout_completed(session):
     )
     
     logger.info(f"Updated user {user_id} with subscription {plan}, period_end: {period_end}")
+    
+    # Send subscription confirmation SMS if user has a phone number
+    try:
+        user_response = table.get_item(Key={"userId": user_id})
+        if "Item" in user_response:
+            phone_number = user_response["Item"].get("phoneNumber")
+            if phone_number:
+                logger.info(f"Sending subscription confirmation SMS to {phone_number}")
+                send_subscription_confirmation_sms(phone_number)
+            else:
+                logger.info(f"User {user_id} has no phone number registered, skipping SMS")
+    except Exception as sms_error:
+        # Log error but don't fail the webhook
+        logger.error(f"Failed to send subscription confirmation SMS for user {user_id}: {str(sms_error)}", exc_info=True)
 
 
 def handle_subscription_created(subscription):
@@ -297,6 +318,18 @@ def handle_subscription_deleted(subscription):
     )
     
     logger.info(f"Reverted user {user['userId']} to free plan after subscription ended")
+    
+    # Send cancellation SMS if user has a phone number
+    try:
+        phone_number = user.get("phoneNumber")
+        if phone_number:
+            logger.info(f"Sending cancellation SMS to {phone_number}")
+            send_cancellation_sms(phone_number)
+        else:
+            logger.info(f"User {user['userId']} has no phone number registered, skipping SMS")
+    except Exception as sms_error:
+        # Log error but don't fail the webhook
+        logger.error(f"Failed to send cancellation SMS for user {user['userId']}: {str(sms_error)}", exc_info=True)
 
 
 def handle_payment_failed(invoice):
