@@ -272,11 +272,24 @@ def get_prices(event, context):
     try:
         logger.info("Fetching Stripe price IDs")
         
-        # Price IDs created via Stripe CLI
-        prices = {
-            "monthly": "price_1ShDU6B2NunFksMzSwxqBRkb",  # $9.99/month
-            "annual": "price_1ShDUGB2NunFksMzM51dIr0I"     # $99.99/year
-        }
+        # Environment-specific price IDs
+        # Get price IDs based on Stripe API key mode (test vs live)
+        is_live_mode = stripe.api_key.startswith('sk_live_')
+        
+        if is_live_mode:
+            # Production (live mode) price IDs
+            prices = {
+                "monthly": "price_1ShYvGBcYhqWB9qElNFW7ZDS",  # $9.99/month
+                "annual": "price_1ShYvHBcYhqWB9qEJQBepwRM"     # $99.99/year
+            }
+        else:
+            # Dev/Staging (test mode) price IDs
+            prices = {
+                "monthly": "price_1ShYtwB2NunFksMzz5ZHryaw",  # $9.99/month
+                "annual": "price_1ShYtwB2NunFksMzBLTSE1Fe"     # $99.99/year
+            }
+        
+        logger.info(f"Returning price IDs for {'live' if is_live_mode else 'test'} mode: {prices}")
         
         return {
             "statusCode": 200,
