@@ -187,7 +187,7 @@ resource "null_resource" "package_layer" {
       rm -rf python && \
       mkdir python && \
       pip install -r requirements.txt -t python && \
-      cp ${path.module}/../../../lambdas/shared/*.py python/ && \
+      cp ../shared/*.py python/ && \
       zip -r layer.zip python
     EOT
   }
