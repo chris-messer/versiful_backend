@@ -198,6 +198,6 @@ resource "null_resource" "package_layer" {
 resource "aws_lambda_layer_version" "shared_dependencies" {
   filename         = "${path.module}/../../../lambdas/layer/layer.zip"
   layer_name       = "shared_dependencies"
-  compatible_runtimes = ["python3.9"]
+  compatible_runtimes = ["python3.11", "python3.9"]
   depends_on = [null_resource.package_layer]
 }
