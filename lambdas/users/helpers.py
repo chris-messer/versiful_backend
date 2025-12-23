@@ -109,10 +109,6 @@ def update_user_settings(event, headers):
         if "Item" not in existing:
             table.put_item(Item={"userId": user_id})
 
-        # Track if this is the first time a phone number is being registered
-        is_new_phone_registration = False
-        existing_phone = existing.get("Item", {}).get("phoneNumber") if "Item" in existing else None
-
         update_expression = "SET "
         expression_attribute_values = {}
         expression_attribute_names = {}
@@ -131,10 +127,6 @@ def update_user_settings(event, headers):
                     }
                 value = normalized
                 ensure_sms_usage_record(value, user_id)
-                
-                # Check if this is a new phone registration (not an update)
-                if not existing_phone:
-                    is_new_phone_registration = True
 
             update_fields.append(f"#{key} = :{key}")
             expression_attribute_values[f":{key}"] = value
@@ -157,16 +149,17 @@ def update_user_settings(event, headers):
             ReturnValues="UPDATED_NEW"
         )
 
-        # Send welcome SMS if this is a new phone registration
-        if is_new_phone_registration:
-            phone_number = expression_attribute_values.get(":phoneNumber")
+        # Send welcome SMS if this is a new registration (isRegistered=true with a phone number)
+        is_new_registration = expression_attribute_values.get(":isRegistered") is True
+        phone_number = expression_attribute_values.get(":phoneNumber")
+        
+        if is_new_registration and phone_number:
             first_name = expression_attribute_values.get(":firstName")
-            if phone_number:
-                try:
-                    send_welcome_sms(phone_number, first_name)
-                except Exception as sms_error:
-                    # Log error but don't fail the request
-                    print(f"Failed to send welcome SMS to {phone_number}: {str(sms_error)}")
+            try:
+                send_welcome_sms(phone_number, first_name)
+            except Exception as sms_error:
+                # Log error but don't fail the request
+                print(f"Failed to send welcome SMS to {phone_number}: {str(sms_error)}")
 
         return {"statusCode": 200, "body": json.dumps({"message": "Settings updated"})}
 
