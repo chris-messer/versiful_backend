@@ -193,14 +193,15 @@ resource "null_resource" "package_layer" {
   }
 
   triggers = {
-    requirements = filemd5("${path.module}/../../../lambdas/layer/requirements.txt")
+    requirements   = filemd5("${path.module}/../../../lambdas/layer/requirements.txt")
     shared_secrets = filemd5("${path.module}/../../../lambdas/shared/secrets_helper.py")
-    shared_sms = filemd5("${path.module}/../../../lambdas/shared/sms_notifications.py")
+    shared_sms     = filemd5("${path.module}/../../../lambdas/shared/sms_notifications.py")
   }
 }
 resource "aws_lambda_layer_version" "shared_dependencies" {
   filename         = "${path.module}/../../../lambdas/layer/layer.zip"
   layer_name       = "shared_dependencies"
   compatible_runtimes = ["python3.11", "python3.9"]
+  source_code_hash = filebase64sha256("${path.module}/../../../lambdas/layer/layer.zip")
   depends_on = [null_resource.package_layer]
 }
