@@ -273,23 +273,29 @@ def get_prices(event, context):
         logger.info("Fetching Stripe price IDs")
         
         # Environment-specific price IDs
-        # Get price IDs based on Stripe API key mode (test vs live)
+        # Determine environment based on Stripe API key
         is_live_mode = stripe.api_key.startswith('sk_live_')
         
         if is_live_mode:
-            # Production (live mode) price IDs
+            # Production (live mode) - Account 51Qszo...
             prices = {
                 "monthly": "price_1ShYvGBcYhqWB9qElNFW7ZDS",  # $9.99/month
                 "annual": "price_1ShYvHBcYhqWB9qEJQBepwRM"     # $99.99/year
             }
+        elif '51ShHXv' in stripe.api_key:
+            # Staging (test mode) - Account 51ShHXv...
+            prices = {
+                "monthly": "price_1ShZ1aAyC9k5KbaXIxag1Bd6",  # $9.99/month
+                "annual": "price_1ShZ2BAyC9k5KbaXFrJCNHsl"     # $99.99/year
+            }
         else:
-            # Dev/Staging (test mode) price IDs
+            # Dev (test mode) - Account 51Qszoe...
             prices = {
                 "monthly": "price_1ShYtwB2NunFksMzz5ZHryaw",  # $9.99/month
                 "annual": "price_1ShYtwB2NunFksMzBLTSE1Fe"     # $99.99/year
             }
         
-        logger.info(f"Returning price IDs for {'live' if is_live_mode else 'test'} mode: {prices}")
+        logger.info(f"Returning price IDs for {env} environment: {prices}")
         
         return {
             "statusCode": 200,
