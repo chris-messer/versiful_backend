@@ -1,5 +1,6 @@
 import json
 import os
+import logging
 from typing import Optional
 from datetime import datetime, timezone
 from urllib.parse import parse_qs
@@ -9,6 +10,10 @@ import boto3
 import requests
 from botocore.exceptions import ClientError
 from twilio.rest import Client
+from twilio.base.exceptions import TwilioRestException
+
+# Setup logging
+logger = logging.getLogger()
 
 # Dynamo + env configuration
 dynamodb = boto3.resource("dynamodb")
@@ -162,17 +167,124 @@ def get_twilio_secrets():
 
 
 def send_message(to_num, message):
-    twilio_auth = get_twilio_secrets()
-    account_sid = twilio_auth["twilio_account_sid"]
-    auth_token = twilio_auth["twilio_auth"]
+    """
+    Send SMS via Twilio with carrier block detection
+    
+    If user has unsubscribed via carrier (texted STOP to carrier),
+    Twilio returns error 21610. We detect this and mark user as opted out.
+    """
+    try:
+        twilio_auth = get_twilio_secrets()
+        account_sid = twilio_auth["twilio_account_sid"]
+        auth_token = twilio_auth["twilio_auth"]
 
-    client = Client(account_sid, auth_token)
+        client = Client(account_sid, auth_token)
 
-    message = client.messages.create(
-        from_="+18336811158", body=f"{message}", to=f"{to_num}"
-    )
+        twilio_message = client.messages.create(
+            from_="+18336811158", 
+            body=f"{message}", 
+            to=f"{to_num}"
+        )
 
-    return message.sid
+        return twilio_message.sid
+        
+    except TwilioRestException as e:
+        # Error 21610: Attempt to send to unsubscribed recipient
+        # This means user texted STOP to carrier and number is blocked
+        if e.code == 21610:
+            logger.warning(f"Carrier block detected for {to_num} (Error 21610). User texted STOP to carrier.")
+            # Mark user as opted out in database
+            _mark_carrier_opted_out(to_num)
+            return None
+        else:
+            logger.error(f"Twilio error {e.code}: {e.msg} for {to_num}")
+            raise
+    except Exception as e:
+        logger.error(f"Error sending message to {to_num}: {str(e)}")
+        return None
+
+
+def _mark_carrier_opted_out(phone_number: str):
+    """
+    Mark user as opted out when carrier block is detected
+    This happens when user texts STOP directly to their carrier
+    """
+    try:
+        from boto3.dynamodb.conditions import Attr
+        
+        logger.info(f"Marking {phone_number} as opted out due to carrier block")
+        
+        # Find user by phone number
+        response = users_table.scan(
+            FilterExpression=Attr("phoneNumber").eq(phone_number)
+        )
+        
+        if not response.get("Items"):
+            logger.warning(f"No user found for carrier-blocked number {phone_number}")
+            return
+        
+        user = response["Items"][0]
+        user_id = user.get("userId")
+        
+        # Update user record to mark as opted out
+        users_table.update_item(
+            Key={"userId": user_id},
+            UpdateExpression="SET optedOut = :opted_out, optedOutAt = :opted_out_at, updatedAt = :now",
+            ExpressionAttributeValues={
+                ":opted_out": True,
+                ":opted_out_at": datetime.now(timezone.utc).isoformat(),
+                ":now": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
+        logger.info(f"User {user_id} marked as opted out due to carrier block")
+        
+        # If user has active subscription, we should cancel it
+        # Import here to avoid circular dependency
+        if user.get("isSubscribed") and user.get("stripeSubscriptionId"):
+            try:
+                import stripe
+                # Get Stripe key from secrets
+                try:
+                    from secrets_helper import get_secret
+                except ImportError:
+                    from lambdas.shared.secrets_helper import get_secret
+                    
+                stripe.api_key = get_secret('stripe_secret_key')
+                
+                logger.info(f"Canceling subscription for carrier-blocked user {user_id}")
+                stripe.Subscription.delete(user["stripeSubscriptionId"])
+                
+                # Update DB to reflect cancellation
+                users_table.update_item(
+                    Key={"userId": user_id},
+                    UpdateExpression="""
+                        SET isSubscribed = :sub,
+                            #plan = :plan,
+                            plan_monthly_cap = :cap,
+                            subscriptionStatus = :status,
+                            cancelAtPeriodEnd = :cancel
+                        REMOVE currentPeriodEnd
+                    """,
+                    ExpressionAttributeNames={
+                        "#plan": "plan"
+                    },
+                    ExpressionAttributeValues={
+                        ":sub": False,
+                        ":plan": "free",
+                        ":cap": 5,
+                        ":status": "canceled",
+                        ":cancel": False
+                    }
+                )
+                logger.info(f"Subscription canceled for user {user_id}")
+            except Exception as stripe_error:
+                logger.error(f"Failed to cancel subscription for {user_id}: {str(stripe_error)}")
+                # Don't fail - opt-out is still recorded
+        
+    except Exception as e:
+        logger.error(f"Error marking user as opted out: {str(e)}")
+        # Don't raise - this is a background operation
 
 
 # ---------- Usage + quota helpers ----------

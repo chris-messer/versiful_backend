@@ -3,6 +3,7 @@ import json
 import logging
 import sys
 import os
+import stripe
 from datetime import datetime, timezone
 
 try:
@@ -32,7 +33,16 @@ except Exception:
         normalize_phone_number,
     )
 
+# Import secrets helper and SMS notifications
+try:
+    from secrets_helper import get_secret
+    from sms_notifications import send_cancellation_sms
+except ImportError:
+    from lambdas.shared.secrets_helper import get_secret
+    from lambdas.shared.sms_notifications import send_cancellation_sms
+
 import boto3
+from boto3.dynamodb.conditions import Attr
 from twilio.twiml.messaging_response import MessagingResponse  # noqa: F401
 
 logger = logging.getLogger()
@@ -42,6 +52,16 @@ if not logger.handlers:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
     logger.addHandler(handler)
+
+# Initialize Stripe
+stripe.api_key = get_secret('stripe_secret_key')
+
+# DynamoDB setup
+dynamodb = boto3.resource("dynamodb")
+env = os.environ.get('ENVIRONMENT', 'dev')
+project_name = os.environ.get('PROJECT_NAME', 'versiful')
+table_name = f"{env}-{project_name}-users"
+table = dynamodb.Table(table_name)
 
 # Lambda client for invoking chat handler
 lambda_client = boto3.client('lambda')
@@ -150,6 +170,216 @@ def _success_response():
     }
 
 
+def _handle_stop_keyword(phone_number: str):
+    """
+    Handle STOP, END, CANCEL, UNSUBSCRIBE, QUIT keywords
+    Cancels subscription (if any) and opts user out of messages
+    
+    IMPORTANT: This MUST cancel Stripe subscriptions to avoid charging users
+    for a service they're not receiving. This is required for consumer protection.
+    """
+    logger.info(f"Processing STOP request from {phone_number}")
+    
+    try:
+        # Find user by phone number
+        response = table.scan(
+            FilterExpression=Attr("phoneNumber").eq(phone_number)
+        )
+        
+        if not response.get("Items"):
+            logger.info(f"No user found for phone {phone_number}")
+            # Still send opt-out confirmation
+            send_message(
+                phone_number,
+                "You have been unsubscribed from Versiful messages. "
+                "Reply START to resubscribe anytime."
+            )
+            return
+        
+        user = response["Items"][0]
+        user_id = user.get("userId")
+        logger.info(f"Found user {user_id} for STOP request")
+        
+        # Check if user has an active subscription
+        has_subscription = user.get("isSubscribed", False)
+        stripe_subscription_id = user.get("stripeSubscriptionId")
+        
+        # CRITICAL: Cancel Stripe subscription to stop billing
+        if has_subscription and stripe_subscription_id:
+            logger.info(f"User {user_id} has active subscription {stripe_subscription_id}, canceling immediately")
+            try:
+                # Cancel the Stripe subscription immediately (not at period end)
+                # This is REQUIRED to avoid charging users for service they're not receiving
+                stripe.Subscription.delete(stripe_subscription_id)
+                logger.info(f"Successfully canceled Stripe subscription {stripe_subscription_id}")
+            except Exception as stripe_error:
+                logger.error(f"CRITICAL ERROR canceling Stripe subscription: {str(stripe_error)}")
+                # Continue with opt-out even if Stripe fails - user shouldn't receive messages
+                # but we should alert about the billing issue
+        
+        # Update DynamoDB - revert to free plan and mark as opted out
+        update_expression = """
+            SET isSubscribed = :sub,
+                #plan = :plan,
+                plan_monthly_cap = :cap,
+                subscriptionStatus = :status,
+                cancelAtPeriodEnd = :cancel,
+                optedOut = :opted_out,
+                optedOutAt = :opted_out_at,
+                updatedAt = :now
+            REMOVE currentPeriodEnd
+        """
+        
+        table.update_item(
+            Key={"userId": user_id},
+            UpdateExpression=update_expression,
+            ExpressionAttributeNames={
+                "#plan": "plan"
+            },
+            ExpressionAttributeValues={
+                ":sub": False,
+                ":plan": "free",
+                ":cap": 5,  # Revert to free tier limit
+                ":status": "canceled",
+                ":cancel": False,
+                ":opted_out": True,
+                ":opted_out_at": datetime.now(timezone.utc).isoformat(),
+                ":now": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
+        logger.info(f"Updated user {user_id}: subscription canceled, opted out, reverted to free plan")
+        
+        # Send cancellation confirmation
+        if has_subscription:
+            # User had subscription - send full cancellation message
+            send_cancellation_sms(phone_number)
+        else:
+            # User was free tier - just opt-out confirmation
+            send_message(
+                phone_number,
+                "You have been unsubscribed from Versiful messages. "
+                "Reply START to resubscribe anytime."
+            )
+        
+    except Exception as e:
+        logger.error(f"Error processing STOP request: {str(e)}", exc_info=True)
+        # Still send basic opt-out confirmation
+        send_message(
+            phone_number,
+            "You have been unsubscribed. Reply START to resubscribe."
+        )
+
+
+def _handle_start_keyword(phone_number: str):
+    """
+    Handle START, UNSTOP keywords
+    Opts user back in to receive messages
+    """
+    logger.info(f"Processing START request from {phone_number}")
+    
+    try:
+        # Find user by phone number
+        response = table.scan(
+            FilterExpression=Attr("phoneNumber").eq(phone_number)
+        )
+        
+        if not response.get("Items"):
+            logger.info(f"No user found for phone {phone_number}, sending welcome message")
+            send_message(
+                phone_number,
+                "Welcome back to Versiful! 🙏\n\n"
+                "Text us your questions or what you're facing, and we'll respond with "
+                "biblical wisdom and guidance.\n\n"
+                "Register at https://versiful.io for unlimited messages and saved conversations."
+            )
+            return
+        
+        user = response["Items"][0]
+        user_id = user.get("userId")
+        
+        # Update opt-out status
+        table.update_item(
+            Key={"userId": user_id},
+            UpdateExpression="SET optedOut = :opted_out, updatedAt = :now REMOVE optedOutAt",
+            ExpressionAttributeValues={
+                ":opted_out": False,
+                ":now": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
+        logger.info(f"User {user_id} opted back in")
+        
+        # Send welcome back message
+        first_name = user.get("firstName", "")
+        greeting = f"Welcome back, {first_name}!" if first_name else "Welcome back to Versiful!"
+        
+        send_message(
+            phone_number,
+            f"{greeting} 🙏\n\n"
+            f"You're now subscribed to receive messages again. Text us anytime for "
+            f"guidance and wisdom from Scripture.\n\n"
+            f"Visit https://versiful.io to manage your account."
+        )
+        
+    except Exception as e:
+        logger.error(f"Error processing START request: {str(e)}", exc_info=True)
+        send_message(
+            phone_number,
+            "Welcome back! You're now subscribed to Versiful messages."
+        )
+
+
+def _handle_help_keyword(phone_number: str):
+    """
+    Handle HELP keyword
+    Provides support information and commands
+    """
+    logger.info(f"Processing HELP request from {phone_number}")
+    
+    help_message = (
+        "VERSIFUL HELP 📖\n\n"
+        "Text us your questions or what you're facing, and we'll respond with "
+        "biblical guidance.\n\n"
+        "COMMANDS:\n"
+        "• STOP - Unsubscribe from messages\n"
+        "• START - Resubscribe to messages\n"
+        "• HELP - Show this help message\n\n"
+        "SUPPORT:\n"
+        "Visit: https://versiful.io\n"
+        "Email: support@versiful.com\n"
+        "Text: 833-681-1158\n\n"
+        "Message & data rates may apply."
+    )
+    
+    send_message(phone_number, help_message)
+
+
+def _is_keyword_command(body: str) -> tuple[bool, str]:
+    """
+    Check if message is a keyword command (STOP, START, HELP, etc.)
+    Returns (is_keyword, keyword_type)
+    """
+    if not body:
+        return (False, None)
+    
+    normalized = body.strip().upper()
+    
+    # STOP variants (TCPA required)
+    if normalized in ["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"]:
+        return (True, "STOP")
+    
+    # START variants (TCPA required)
+    if normalized in ["START", "UNSTOP"]:
+        return (True, "START")
+    
+    # HELP (TCPA required)
+    if normalized in ["HELP", "INFO"]:
+        return (True, "HELP")
+    
+    return (False, None)
+
+
 def _invoke_chat_handler(thread_id: str, message: str, user_id: str = None, phone_number: str = None):
     """
     Invoke the chat Lambda function
@@ -217,6 +447,37 @@ def handler(event, context):
     if not from_num_normalized:
         logger.info("Could not normalize phone number: %s", from_num)
         return _success_response()
+
+    # Check if message is a keyword command (STOP, START, HELP)
+    is_keyword, keyword_type = _is_keyword_command(body)
+    
+    if is_keyword:
+        logger.info(f"Processing keyword command: {keyword_type}")
+        
+        if keyword_type == "STOP":
+            _handle_stop_keyword(from_num_normalized)
+        elif keyword_type == "START":
+            _handle_start_keyword(from_num_normalized)
+        elif keyword_type == "HELP":
+            _handle_help_keyword(from_num_normalized)
+        
+        return _success_response()
+
+    # Check if user is opted out
+    try:
+        response = table.scan(
+            FilterExpression=Attr("phoneNumber").eq(from_num_normalized)
+        )
+        
+        if response.get("Items"):
+            user = response["Items"][0]
+            if user.get("optedOut", False):
+                logger.info(f"User {from_num_normalized} is opted out, ignoring message")
+                # Don't respond to opted-out users (except for START/HELP)
+                return _success_response()
+    except Exception as e:
+        logger.warning(f"Error checking opt-out status: {str(e)}")
+        # Continue processing if we can't check opt-out status
 
     logger.info("Message body found!")
     try:

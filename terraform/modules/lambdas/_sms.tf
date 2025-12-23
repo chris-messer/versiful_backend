@@ -35,7 +35,8 @@ resource "aws_lambda_function" "sms_function" {
   source_code_hash = data.archive_file.sms_zip.output_base64sha256
   layers = [
     aws_lambda_layer_version.core_layer.arn,
-    aws_lambda_layer_version.sms_layer.arn
+    aws_lambda_layer_version.sms_layer.arn,
+    aws_lambda_layer_version.shared_dependencies.arn
   ]
   # depends_on = [null_resource.package_sms]
   timeout       = 30
@@ -49,6 +50,7 @@ resource "aws_lambda_function" "sms_function" {
       FREE_MONTHLY_LIMIT= "5"
       NUDGE_LIMIT       = "3"
       CHAT_FUNCTION_NAME= "${var.environment}-${var.project_name}-chat"
+      SECRET_ARN        = var.secret_arn
     }
 
   }
