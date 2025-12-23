@@ -20,6 +20,18 @@ except ImportError:
 VERSIFUL_PHONE = "+18336811158"
 VERSIFUL_DOMAIN = "versiful.io"
 
+# vCard URL - hosted in S3 (we'll create this file)
+# Format: https://{env}.versiful.io/versiful-contact.vcf
+def get_vcard_url(environment=None):
+    """Get the vCard URL for the current environment"""
+    if not environment:
+        environment = os.environ.get("ENVIRONMENT", "dev")
+    
+    if environment == "prod":
+        return f"https://{VERSIFUL_DOMAIN}/versiful-contact.vcf"
+    else:
+        return f"https://{environment}.{VERSIFUL_DOMAIN}/versiful-contact.vcf"
+
 
 def get_twilio_client():
     """Initialize and return Twilio client"""
@@ -33,30 +45,14 @@ def get_twilio_client():
     return Client(account_sid, auth_token)
 
 
-def generate_vcard():
-    """
-    Generate a vCard contact card for Versiful
-    This allows users to easily add Versiful to their contacts
-    """
-    vcard = """BEGIN:VCARD
-VERSION:3.0
-FN:Versiful
-ORG:Versiful
-TEL;TYPE=CELL:+18336811158
-URL:https://versiful.io
-NOTE:Biblical guidance and wisdom via text message
-END:VCARD"""
-    return vcard
-
-
 def send_sms(phone_number: str, message: str, media_url: str = None):
     """
-    Send an SMS message to a phone number
+    Send an SMS/MMS message to a phone number
     
     Args:
         phone_number: E.164 formatted phone number (e.g. +1##########)
         message: Message body
-        media_url: Optional media URL (for MMS with vCard)
+        media_url: Optional media URL (for MMS with vCard or images)
     
     Returns:
         message_sid on success, None on failure
@@ -85,17 +81,20 @@ def send_sms(phone_number: str, message: str, media_url: str = None):
 def send_welcome_sms(phone_number: str):
     """
     Send welcome message when user first registers their phone number
-    Includes information about free tier and link to subscribe
+    Includes information about free tier, link to subscribe, and vCard to save contact
     """
     message = (
         f"Welcome to Versiful! 🙏\n\n"
         f"You have 5 free messages per month. Text us anytime for biblical guidance and wisdom.\n\n"
         f"Want unlimited messages? Subscribe at https://{VERSIFUL_DOMAIN}\n\n"
-        f"Save this number to your contacts for easy access!"
+        f"Tap the contact card to save Versiful to your contacts!"
     )
     
-    logger.info(f"Sending welcome SMS to {phone_number}")
-    return send_sms(phone_number, message)
+    # Get vCard URL for current environment
+    vcard_url = get_vcard_url()
+    
+    logger.info(f"Sending welcome SMS with vCard to {phone_number}")
+    return send_sms(phone_number, message, media_url=vcard_url)
 
 
 def send_subscription_confirmation_sms(phone_number: str):
