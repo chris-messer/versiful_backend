@@ -78,13 +78,20 @@ def send_sms(phone_number: str, message: str, media_url: str = None):
         return None
 
 
-def send_welcome_sms(phone_number: str):
+def send_welcome_sms(phone_number: str, first_name: str = None):
     """
     Send welcome message when user first registers their phone number
     Includes information about free tier, link to subscribe, and vCard to save contact
+    
+    Args:
+        phone_number: E.164 formatted phone number
+        first_name: Optional first name to personalize the message
     """
+    # Personalize greeting if we have a first name
+    greeting = f"Welcome to Versiful, {first_name}! 🙏" if first_name else "Welcome to Versiful! 🙏"
+    
     message = (
-        f"Welcome to Versiful! 🙏\n\n"
+        f"{greeting}\n\n"
         f"You have 5 free messages per month. Text us anytime for biblical guidance and wisdom.\n\n"
         f"Want unlimited messages? Subscribe at https://{VERSIFUL_DOMAIN}\n\n"
         f"Tap the contact card to save Versiful to your contacts!"

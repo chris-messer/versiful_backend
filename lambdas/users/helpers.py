@@ -160,9 +160,10 @@ def update_user_settings(event, headers):
         # Send welcome SMS if this is a new phone registration
         if is_new_phone_registration:
             phone_number = expression_attribute_values.get(":phoneNumber")
+            first_name = expression_attribute_values.get(":firstName")
             if phone_number:
                 try:
-                    send_welcome_sms(phone_number)
+                    send_welcome_sms(phone_number, first_name)
                 except Exception as sms_error:
                     # Log error but don't fail the request
                     print(f"Failed to send welcome SMS to {phone_number}: {str(sms_error)}")
