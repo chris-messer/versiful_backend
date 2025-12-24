@@ -104,3 +104,8 @@ variable "stripe_secret_key" {
   sensitive   = true
 }
 
+variable "versiful_phone" {
+  description = "Versiful phone number in E.164 format (e.g., +18336811158)"
+  type        = string
+}
+

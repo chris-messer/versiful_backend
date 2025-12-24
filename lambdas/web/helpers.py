@@ -2,9 +2,13 @@ import requests
 
 import boto3
 import json
+import os
 from botocore.exceptions import ClientError
 from twilio.rest import Client
 import openai
+
+# Get phone from environment variable with fallback
+VERSIFUL_PHONE = os.environ.get("VERSIFUL_PHONE", "+18336811158")
 
 
 def get_secret():
@@ -103,7 +107,7 @@ def send_message(to_num, message):
     client = Client(account_sid, auth_token)
 
     message = client.messages.create(
-        from_='+18336811158',
+        from_=VERSIFUL_PHONE,
         body=f'{message}',
         to= f'{to_num}'
     )

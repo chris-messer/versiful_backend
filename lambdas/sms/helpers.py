@@ -25,6 +25,7 @@ SMS_USAGE_TABLE = os.environ.get(
 USERS_TABLE = os.environ.get("USERS_TABLE", f"{ENVIRONMENT}-{PROJECT_NAME}-users")
 FREE_MONTHLY_LIMIT = int(os.environ.get("FREE_MONTHLY_LIMIT", "5"))
 NUDGE_LIMIT = int(os.environ.get("NUDGE_LIMIT", "3"))
+VERSIFUL_PHONE = os.environ.get("VERSIFUL_PHONE", "+18336811158")
 
 sms_usage_table = dynamodb.Table(SMS_USAGE_TABLE)
 users_table = dynamodb.Table(USERS_TABLE)
@@ -181,7 +182,7 @@ def send_message(to_num, message):
         client = Client(account_sid, auth_token)
 
         twilio_message = client.messages.create(
-            from_="+18336811158", 
+            from_=VERSIFUL_PHONE, 
             body=f"{message}", 
             to=f"{to_num}"
         )
