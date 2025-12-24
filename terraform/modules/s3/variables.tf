@@ -15,3 +15,8 @@ variable "domain_name" {
 variable "cloudfront_cdn_arn" {
     description = "ARN of the main CF distro, to pass for IAM access for invalidating cache"
     }
+
+variable "versiful_phone" {
+  description = "Versiful phone number in E.164 format"
+  type        = string
+}

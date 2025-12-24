@@ -41,6 +41,49 @@ resource "aws_s3_bucket_policy" "react_static_site_policy" {
   })
 }
 
+# Format phone number for display
+locals {
+  # Extract digits from +18336811158 to get area(833), prefix(681), line(1158)
+  phone_digits = replace(var.versiful_phone, "+1", "")
+  phone_area   = substr(local.phone_digits, 0, 3)
+  phone_prefix = substr(local.phone_digits, 3, 3)
+  phone_line   = substr(local.phone_digits, 6, 4)
+  
+  # Format: (833) 681-1158
+  phone_display = "(${local.phone_area}) ${local.phone_prefix}-${local.phone_line}"
+  
+  # Format: 833-681-1158
+  phone_sms = "${local.phone_area}-${local.phone_prefix}-${local.phone_line}"
+}
+
+# Generate config.json with environment-specific values
+resource "local_file" "config_json" {
+  filename = "${path.module}/config.json"
+  
+  content = jsonencode({
+    environment = var.environment
+    phone = {
+      e164    = var.versiful_phone
+      display = local.phone_display
+      sms     = local.phone_sms
+    }
+  })
+}
+
+# Upload config.json to S3
+resource "aws_s3_object" "config_json" {
+  bucket        = aws_s3_bucket.react_static_site.id
+  key           = "config.json"
+  content       = local_file.config_json.content
+  content_type  = "application/json"
+  cache_control = "public, max-age=300"  # Cache for 5 minutes
+  etag          = md5(local_file.config_json.content)
+  
+  depends_on = [
+    aws_s3_bucket_policy.react_static_site_policy
+  ]
+}
+
 resource "null_resource" "deploy_react_project" {
   provisioner "local-exec" {
     command = <<EOT
