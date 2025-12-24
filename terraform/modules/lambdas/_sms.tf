@@ -51,6 +51,7 @@ resource "aws_lambda_function" "sms_function" {
       NUDGE_LIMIT       = "3"
       CHAT_FUNCTION_NAME= "${var.environment}-${var.project_name}-chat"
       SECRET_ARN        = var.secret_arn
+      VERSIFUL_PHONE    = var.versiful_phone
     }
 
   }

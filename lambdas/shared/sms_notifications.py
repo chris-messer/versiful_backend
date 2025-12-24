@@ -17,7 +17,7 @@ except ImportError:
     from lambdas.shared.secrets_helper import get_secret, get_secrets
 
 
-VERSIFUL_PHONE = "+18336811158"
+VERSIFUL_PHONE = os.environ.get("VERSIFUL_PHONE", "+18336811158")
 VERSIFUL_DOMAIN = "versiful.io"
 
 # vCard URL - hosted in S3 (we'll create this file)

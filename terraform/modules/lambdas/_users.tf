@@ -46,6 +46,7 @@ resource "aws_lambda_function" "users_function" {
       SMS_USAGE_TABLE = "${var.environment}-${var.project_name}-sms-usage"
       USERS_TABLE     = "${var.environment}-${var.project_name}-users"
       SECRET_ARN      = var.secret_arn
+      VERSIFUL_PHONE  = var.versiful_phone
     }
 
   }

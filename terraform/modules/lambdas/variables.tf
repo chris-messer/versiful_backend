@@ -59,3 +59,8 @@ variable "frontend_domain" {
   description = "Frontend domain for Stripe redirect URLs"
   type        = string
 }
+
+variable "versiful_phone" {
+  description = "Versiful phone number in E.164 format"
+  type        = string
+}

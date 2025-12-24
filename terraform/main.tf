@@ -125,6 +125,7 @@ module "lambdas" {
   jwt_auth_id              = module.apiGateway.jwt_auth_id
   allowed_cors_origins     = var.allowed_cors_origins
   frontend_domain          = var.environment == "prod" ? local.domain : "${var.environment}.${local.domain}"
+  versiful_phone           = var.versiful_phone
 }
 
 module "cognito" {
