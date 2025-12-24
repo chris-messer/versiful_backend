@@ -56,6 +56,7 @@ module "s3" {
   project_name       = local.project_name
   environment        = local.environment
   cloudfront_cdn_arn = module.cloudFront.cloudfront_cdn_arn
+  versiful_phone     = var.versiful_phone
 }
 
 module "acm" {
