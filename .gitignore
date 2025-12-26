@@ -63,3 +63,5 @@ terraform.rc
 */__pycache__/
 lambdas/layers/*/python/
 lambdas/layers/*/*.zip
+DEPLOYMENT_SUMMARY.md
+terraform/modules/s3/config.json
