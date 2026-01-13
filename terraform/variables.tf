@@ -109,3 +109,9 @@ variable "versiful_phone" {
   type        = string
 }
 
+variable "posthog_apikey" {
+  description = "PostHog API key for analytics"
+  type        = string
+  sensitive   = true
+}
+

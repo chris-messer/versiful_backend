@@ -57,6 +57,7 @@ module "s3" {
   environment        = local.environment
   cloudfront_cdn_arn = module.cloudFront.cloudfront_cdn_arn
   versiful_phone     = var.versiful_phone
+  posthog_apikey     = var.posthog_apikey
 }
 
 module "acm" {

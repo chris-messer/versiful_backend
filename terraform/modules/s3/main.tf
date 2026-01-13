@@ -67,6 +67,9 @@ resource "local_file" "config_json" {
       display = local.phone_display
       sms     = local.phone_sms
     }
+    posthog = {
+      apiKey = var.posthog_apikey
+    }
   })
 }
 
