@@ -20,7 +20,7 @@ except ImportError:
 VERSIFUL_PHONE = os.environ.get("VERSIFUL_PHONE", "+18336811158")
 VERSIFUL_DOMAIN = "versiful.io"
 
-# vCard URL - hosted in S3 (we'll create this file)
+# vCard URL - hosted in S3 (environment-specific files with correct phone numbers)
 # Format: https://{env}.versiful.io/versiful-contact.vcf
 def get_vcard_url(environment=None):
     """Get the vCard URL for the current environment"""

@@ -84,6 +84,42 @@ resource "aws_s3_object" "config_json" {
   ]
 }
 
+# Generate vCard with environment-specific phone number
+locals {
+  vcard_content = <<-VCARD
+BEGIN:VCARD
+VERSION:3.0
+N:;Versiful;;;
+FN:Versiful
+ORG:Versiful
+TEL;TYPE=CELL:${var.versiful_phone}
+URL:https://versiful.io
+PHOTO;ENCODING=b;TYPE=PNG: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
+NOTE:Biblical guidance and wisdom via text message
+END:VCARD
+VCARD
+}
+
+# Generate vCard file locally
+resource "local_file" "vcard" {
+  filename = "${path.module}/versiful-contact.vcf"
+  content  = local.vcard_content
+}
+
+# Upload vCard to S3
+resource "aws_s3_object" "vcard" {
+  bucket        = aws_s3_bucket.react_static_site.id
+  key           = "versiful-contact.vcf"
+  content       = local_file.vcard.content
+  content_type  = "text/vcard"
+  cache_control = "public, max-age=86400"  # Cache for 24 hours
+  etag          = md5(local_file.vcard.content)
+  
+  depends_on = [
+    aws_s3_bucket_policy.react_static_site_policy
+  ]
+}
+
 resource "null_resource" "deploy_react_project" {
   provisioner "local-exec" {
     command = <<EOT
