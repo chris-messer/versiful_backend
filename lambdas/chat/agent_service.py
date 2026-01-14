@@ -10,11 +10,138 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 import yaml
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+import boto3
+from botocore.exceptions import ClientError
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
+from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+# DynamoDB setup for user data access
+dynamodb = boto3.resource('dynamodb')
+ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
+PROJECT_NAME = os.environ.get('PROJECT_NAME', 'versiful')
+USERS_TABLE = os.environ.get(
+    'USERS_TABLE',
+    f'{ENVIRONMENT}-{PROJECT_NAME}-users'
+)
+users_table = dynamodb.Table(USERS_TABLE)
+
+
+@tool
+def get_versiful_info() -> str:
+    """Get information about Versiful service, features, pricing, and FAQs.
+    
+    Use this tool when the user asks about:
+    - What is Versiful / what service they are using
+    - How to upgrade or subscribe
+    - Pricing information
+    - How to cancel subscription
+    - Features of the service
+    - Any questions about the Versiful app or service
+    
+    Returns detailed information about Versiful.
+    """
+    return """VERSIFUL - Biblical Guidance Via Text
+
+**About Versiful:**
+Versiful is a service that provides personalized biblical guidance and wisdom through text messaging and web chat. Users can text their questions, struggles, or situations and receive compassionate responses rooted in Scripture.
+
+**Key Features:**
+- 24/7 access to biblical guidance via SMS and web chat
+- Personalized responses based on your situation
+- Choose your preferred Bible translation (KJV, NIV, ESV, and more)
+- Conversation history saved for web users
+- Private and secure
+
+**Plans & Pricing:**
+- **Free Plan**: 5 messages per month via SMS
+- **Paid Subscription**: Unlimited messages
+  - Web: Manage subscription at versiful.io/subscription
+  - Pricing details available during signup
+
+**How to Upgrade:**
+1. Visit https://versiful.io
+2. Sign in with your account
+3. Go to Settings or Subscription page
+4. Choose a paid plan
+
+**How to Cancel Subscription:**
+- **Via Web**: Go to https://versiful.io/subscription and click "Manage Subscription" to cancel
+- **Via SMS**: Text "STOP" to cancel (this will also opt you out of messages and cancel any active subscription)
+- You can also manage your subscription through the Stripe customer portal
+
+**How to Change Bible Version:**
+1. Go to https://versiful.io/settings
+2. Navigate to "Personalization" section
+3. Select your preferred Bible translation
+4. All future responses will use your selected version
+
+**Support:**
+- Website: https://versiful.io
+- Email: support@versiful.com
+- SMS Keywords: 
+  - HELP - Get help information
+  - STOP - Unsubscribe and cancel
+  - START - Resubscribe after stopping
+
+**Privacy:**
+Your conversations are private and secure. We take your privacy seriously and never share your personal information."""
+
+
+@tool
+def get_user_context(user_id: str) -> str:
+    """Get information about the current user including their name and subscription status.
+    
+    Use this tool when you need to:
+    - Address the user by name
+    - Check their subscription status
+    - Get their preferences
+    
+    Args:
+        user_id: The user's unique identifier
+        
+    Returns information about the user including first name, subscription status, and plan.
+    """
+    if not user_id:
+        return "User information not available (not logged in or no user_id provided)."
+    
+    try:
+        response = users_table.get_item(Key={'userId': user_id})
+        if 'Item' not in response:
+            return "User profile not found."
+        
+        user = response['Item']
+        first_name = user.get('firstName', '')
+        last_name = user.get('lastName', '')
+        is_subscribed = user.get('isSubscribed', False)
+        plan = user.get('plan', 'free')
+        bible_version = user.get('bibleVersion', 'Not set')
+        
+        # Build context string
+        context_parts = []
+        
+        if first_name:
+            context_parts.append(f"User's name: {first_name}")
+            if last_name:
+                context_parts[-1] += f" {last_name}"
+        
+        if is_subscribed:
+            context_parts.append(f"Subscription: Active ({plan} plan)")
+            context_parts.append("Access: Unlimited messages")
+        else:
+            context_parts.append(f"Subscription: Free plan")
+            context_parts.append("Access: 5 messages per month")
+        
+        context_parts.append(f"Preferred Bible version: {bible_version}")
+        
+        return "\n".join(context_parts)
+        
+    except ClientError as e:
+        logger.error(f"Error fetching user context: {str(e)}")
+        return "Unable to retrieve user information at this time."
 
 
 class AgentService:
@@ -41,21 +168,26 @@ class AgentService:
         if api_key:
             os.environ['OPENAI_API_KEY'] = api_key
         
-        # Initialize LLM
+        # Initialize tools
+        self.tools = [get_versiful_info, get_user_context]
+        
+        # Initialize LLM with tool binding
         llm_config = self.config['llm']
-        self.llm = ChatOpenAI(
+        base_llm = ChatOpenAI(
             model=llm_config['model'],
             temperature=llm_config['temperature'],
             max_tokens=llm_config['max_tokens']
         )
+        self.llm = base_llm.bind_tools(self.tools)
         
-        # Initialize SMS-specific LLM
+        # Initialize SMS-specific LLM (with tools)
         sms_config = llm_config.get('sms', {})
-        self.sms_llm = ChatOpenAI(
+        base_sms_llm = ChatOpenAI(
             model=llm_config['model'],
             temperature=sms_config.get('temperature', llm_config['temperature']),
             max_tokens=sms_config.get('max_tokens', 300)
         )
+        self.sms_llm = base_sms_llm.bind_tools(self.tools)
         
         # Initialize title generation LLM (using GPT-4o-mini for cost efficiency)
         self.title_llm = ChatOpenAI(
@@ -64,7 +196,8 @@ class AgentService:
             max_tokens=50
         )
         
-        logger.info("AgentService initialized with model: %s", llm_config['model'])
+        logger.info("AgentService initialized with model: %s and %d tools", 
+                   llm_config['model'], len(self.tools))
     
     def _check_guardrails(self, message: str) -> tuple[bool, Optional[str], bool]:
         """
@@ -98,9 +231,10 @@ class AgentService:
         messages: List[Dict[str, str]],
         channel: str,
         is_off_topic: bool = False,
-        bible_version: str = None
+        bible_version: str = None,
+        user_id: str = None
     ) -> str:
-        """Generate response using LLM"""
+        """Generate response using LLM with tool calling support"""
         # Select appropriate LLM and system prompt
         if channel == 'sms':
             llm = self.sms_llm
@@ -132,10 +266,57 @@ class AgentService:
             redirect = self.config['guardrails']['redirect_prompt']
             llm_messages.insert(1, SystemMessage(content=f"GUIDANCE: {redirect}"))
         
-        # Generate response
+        # Generate response with tool calling support
         try:
             response = llm.invoke(llm_messages)
+            
+            # Check if LLM wants to use tools
+            if hasattr(response, 'tool_calls') and response.tool_calls:
+                logger.info(f"LLM requested {len(response.tool_calls)} tool call(s)")
+                
+                # Add AI response with tool calls to message history
+                llm_messages.append(response)
+                
+                # Execute tool calls
+                for tool_call in response.tool_calls:
+                    tool_name = tool_call['name']
+                    tool_args = tool_call['args']
+                    tool_id = tool_call['id']
+                    
+                    logger.info(f"Executing tool: {tool_name} with args: {tool_args}")
+                    
+                    # Find and execute the tool
+                    tool_result = None
+                    for tool in self.tools:
+                        if tool.name == tool_name:
+                            try:
+                                # Special handling for get_user_context - inject user_id
+                                if tool_name == 'get_user_context' and user_id and 'user_id' not in tool_args:
+                                    tool_args['user_id'] = user_id
+                                
+                                tool_result = tool.invoke(tool_args)
+                                logger.info(f"Tool {tool_name} result: {tool_result[:100]}...")
+                            except Exception as e:
+                                tool_result = f"Error executing tool: {str(e)}"
+                                logger.error(f"Tool execution error: {str(e)}")
+                            break
+                    
+                    if tool_result is None:
+                        tool_result = f"Tool {tool_name} not found"
+                    
+                    # Add tool result to messages
+                    llm_messages.append(ToolMessage(
+                        content=str(tool_result),
+                        tool_call_id=tool_id
+                    ))
+                
+                # Get final response with tool results
+                final_response = llm.invoke(llm_messages)
+                return final_response.content
+            
+            # No tool calls, return direct response
             return response.content
+            
         except Exception as e:
             logger.error("Error generating response: %s", str(e))
             return "I apologize, but I'm having trouble responding right now. Please try again in a moment."
@@ -191,7 +372,7 @@ class AgentService:
             messages = history + [{"role": "user", "content": message}]
             
             # Generate LLM response
-            response = self._generate_llm_response(messages, channel, is_off_topic, bible_version)
+            response = self._generate_llm_response(messages, channel, is_off_topic, bible_version, user_id)
             
             # Format response
             response = self._format_response(response, channel)
