@@ -142,42 +142,11 @@ resource "aws_iam_role_policy_attachment" "attach_lambda_invoke_policy" {
   policy_arn = aws_iam_policy.lambda_invoke_policy.arn
 }
 
-# IAM Role for API Gateway CloudWatch Logs
-resource "aws_iam_role" "api_gateway_cloudwatch_role" {
-  name = "${var.environment}-${var.project_name}-APIGatewayCloudWatchLogsRole"
-  tags = {
-    Environment = var.environment
-  }
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Effect = "Allow",
-        Principal = {
-          Service = "apigateway.amazonaws.com"
-        },
-        Action = "sts:AssumeRole"
-      }
-    ]
-  })
-}
-
-resource "aws_iam_policy_attachment" "api_gateway_logs_policy" {
-  name       = "${var.environment}-${var.project_name}-APIGatewayLogsPolicyAttachment"
-  roles      = [aws_iam_role.api_gateway_cloudwatch_role.name]
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
-}
-
-# Associate CloudWatch Logs Role with API Gateway Account
-resource "aws_api_gateway_account" "account_settings" {
-  cloudwatch_role_arn = aws_iam_role.api_gateway_cloudwatch_role.arn
-}
-
-# CloudWatch Log Group for API Gateway
-resource "aws_cloudwatch_log_group" "api_gateway_log_group" {
-  name              = "/aws/api-gateway/${var.environment}-${var.project_name}-stage"
-  retention_in_days = 7
-}
+# Note: aws_api_gateway_account and related IAM role removed
+# API Gateway v2 (HTTP API) handles CloudWatch logging differently than REST API
+# Logging is configured per-stage in the apiGateway module via access_log_settings
+# This prevents singleton resource conflicts across environments
+# CloudWatch log group is also managed in the apiGateway module
 
 # Package the layer
 resource "null_resource" "package_layer" {

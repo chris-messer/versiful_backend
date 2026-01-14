@@ -19,15 +19,25 @@ resource "aws_apigatewayv2_api" "lambda_api" {
   }
 }
 
+# CloudWatch Log Group for API Gateway (environment-specific)
+resource "aws_cloudwatch_log_group" "api_gateway_log_group" {
+  name              = "/aws/api-gateway/${var.environment}-${var.project_name}"
+  retention_in_days = 7
+  
+  tags = {
+    Environment = var.environment
+  }
+}
+
 # Deploy API Gateway Stage (Auto Deploy Enabled)
 resource "aws_apigatewayv2_stage" "lambda_stage" {
   api_id      = aws_apigatewayv2_api.lambda_api.id
-  depends_on = [aws_apigatewayv2_api.lambda_api]
+  depends_on  = [aws_apigatewayv2_api.lambda_api, aws_cloudwatch_log_group.api_gateway_log_group]
   name        = var.environment
   auto_deploy = true
 
   access_log_settings {
-    destination_arn = "arn:aws:logs:us-east-1:018908982481:log-group:api-gateway-versiful"
+    destination_arn = aws_cloudwatch_log_group.api_gateway_log_group.arn
     format = jsonencode({
       requestId            = "$context.requestId"
       ip                   = "$context.identity.sourceIp"
