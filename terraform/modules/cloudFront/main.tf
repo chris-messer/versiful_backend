@@ -86,6 +86,20 @@ resource "aws_cloudfront_distribution" "cdn" {
       restriction_type = "none"
     }
   }
+  
+  # Handle React Router routes - return index.html with 200 status for 404s
+  custom_error_response {
+    error_code         = 404
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+  
+  custom_error_response {
+    error_code         = 403
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+  
   depends_on = [null_resource.wait_for_acm_validation]
 }
 
