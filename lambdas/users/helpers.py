@@ -103,7 +103,26 @@ def get_user_profile(event, headers):
 
     response = table.get_item(Key={"userId": user_id})
     if "Item" in response:
-        return {"statusCode": 200, "headers": headers, "body": json.dumps(response["Item"], cls=DecimalEncoder)}
+        user_data = response["Item"]
+        
+        # Fetch SMS usage data if user has a phone number
+        phone_number = user_data.get("phoneNumber")
+        if phone_number:
+            try:
+                usage_response = sms_usage_table.get_item(Key={"phoneNumber": phone_number})
+                if "Item" in usage_response:
+                    usage_data = usage_response["Item"]
+                    # Add usage info to user profile
+                    user_data["smsUsage"] = {
+                        "messagesSent": int(usage_data.get("plan_messages_sent", 0)),
+                        "periodKey": usage_data.get("periodKey"),
+                        "messageLimit": 5 if not user_data.get("isSubscribed") else None  # None = unlimited
+                    }
+            except Exception as e:
+                # Log but don't fail - usage data is optional
+                print(f"Failed to fetch SMS usage for {phone_number}: {str(e)}")
+        
+        return {"statusCode": 200, "headers": headers, "body": json.dumps(user_data, cls=DecimalEncoder)}
 
     return {"statusCode": 404, "headers": headers, "body": json.dumps({"error": "User not found"})}
 
