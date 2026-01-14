@@ -56,11 +56,9 @@ locals {
   phone_sms = "${local.phone_area}-${local.phone_prefix}-${local.phone_line}"
 }
 
-# Generate config.json with environment-specific values
-resource "local_file" "config_json" {
-  filename = "${path.module}/config.json"
-  
-  content = jsonencode({
+# Generate config.json content
+locals {
+  config_json_content = jsonencode({
     environment = var.environment
     phone = {
       e164    = var.versiful_phone
@@ -71,16 +69,17 @@ resource "local_file" "config_json" {
       apiKey = var.posthog_apikey
     }
   })
+  config_json_hash = md5(local.config_json_content)
 }
 
-# Upload config.json to S3
+# Upload config.json directly to S3 (no local file needed)
 resource "aws_s3_object" "config_json" {
   bucket        = aws_s3_bucket.react_static_site.id
   key           = "config.json"
-  content       = local_file.config_json.content
+  content       = local.config_json_content
   content_type  = "application/json"
   cache_control = "public, max-age=300"  # Cache for 5 minutes
-  etag          = md5(local_file.config_json.content)
+  etag          = local.config_json_hash
   
   depends_on = [
     aws_s3_bucket_policy.react_static_site_policy
@@ -101,22 +100,17 @@ PHOTO;ENCODING=b;TYPE=PNG:iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAGhElEQV
 NOTE:Biblical guidance and wisdom via text message
 END:VCARD
 VCARD
+  vcard_hash = md5(local.vcard_content)
 }
 
-# Generate vCard file locally
-resource "local_file" "vcard" {
-  filename = "${path.module}/versiful-contact.vcf"
-  content  = local.vcard_content
-}
-
-# Upload vCard to S3
+# Upload vCard directly to S3 (no local file needed)
 resource "aws_s3_object" "vcard" {
   bucket        = aws_s3_bucket.react_static_site.id
   key           = "versiful-contact.vcf"
-  content       = local_file.vcard.content
+  content       = local.vcard_content
   content_type  = "text/vcard"
   cache_control = "public, max-age=86400"  # Cache for 24 hours
-  etag          = md5(local_file.vcard.content)
+  etag          = local.vcard_hash
   
   depends_on = [
     aws_s3_bucket_policy.react_static_site_policy
