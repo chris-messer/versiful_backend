@@ -37,6 +37,7 @@ resource "aws_lambda_function" "chat_function" {
       PROJECT_NAME          = var.project_name
       CHAT_MESSAGES_TABLE   = aws_dynamodb_table.chat_messages.name
       CHAT_SESSIONS_TABLE   = aws_dynamodb_table.chat_sessions.name
+      USERS_TABLE           = "${var.environment}-${var.project_name}-users"
     }
   }
 

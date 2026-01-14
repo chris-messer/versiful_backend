@@ -97,7 +97,8 @@ class AgentService:
         self,
         messages: List[Dict[str, str]],
         channel: str,
-        is_off_topic: bool = False
+        is_off_topic: bool = False,
+        bible_version: str = None
     ) -> str:
         """Generate response using LLM"""
         # Select appropriate LLM and system prompt
@@ -107,6 +108,11 @@ class AgentService:
         else:
             llm = self.llm
             system_prompt = self.config['system_prompt']
+        
+        # Inject bible version preference into system prompt
+        if bible_version:
+            bible_instruction = f"\n\nIMPORTANT: When citing Bible verses, always use the {bible_version} translation. The user has specifically requested this version."
+            system_prompt = system_prompt + bible_instruction
         
         # Build messages for LLM
         llm_messages = [SystemMessage(content=system_prompt)]
@@ -152,7 +158,8 @@ class AgentService:
         message: str,
         channel: str,
         history: List[Dict[str, str]] = None,
-        user_id: str = None
+        user_id: str = None,
+        bible_version: str = None
     ) -> Dict[str, Any]:
         """
         Process a message and generate a response
@@ -163,6 +170,7 @@ class AgentService:
             channel: "sms" or "web"
             history: Previous messages in format [{"role": "user/assistant", "content": "..."}]
             user_id: Optional user ID
+            bible_version: Optional preferred Bible version (e.g., 'KJV', 'NIV')
             
         Returns:
             Dict with 'response' and metadata
@@ -183,7 +191,7 @@ class AgentService:
             messages = history + [{"role": "user", "content": message}]
             
             # Generate LLM response
-            response = self._generate_llm_response(messages, channel, is_off_topic)
+            response = self._generate_llm_response(messages, channel, is_off_topic, bible_version)
             
             # Format response
             response = self._format_response(response, channel)

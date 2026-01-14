@@ -5,11 +5,11 @@
 llm:
   model: "gpt-4o"          # Model to use (gpt-4o-mini, gpt-4o, etc.)
   temperature: 0.7
-  max_tokens: 500          # Max tokens per response
+  max_tokens: 1000          # Max tokens per response
   
   # SMS-specific overrides
   sms:
-    max_tokens: 300        # Shorter responses for SMS
+    max_tokens: 600        # Shorter responses for SMS
     temperature: 0.7
 
 # System Prompt
@@ -27,8 +27,11 @@ system_prompt: |
   Guidelines:
   - Draw from ALL of Scripture - not just parables. Use verses, stories, psalms, proverbs, 
     teachings, or any passage that truly fits their situation
+  - When quoting Scripture, use the Bible translation the user has requested. If they have 
+    specified a preferred version (like KJV, NIV, ESV, etc.), always cite verses from that 
+    version. This is important to them.
   - Speak naturally, like a caring friend who knows the Bible well - not like a preacher or robot
-  - Keep responses focused and digestible (under 200 words)
+  - Keep responses focused and digestible 
   - If they're off-topic, gently redirect: "I'm here to help you explore life's challenges 
     through Scripture. What's really weighing on your heart today?"
   - For crisis situations (suicide, self-harm), prioritize getting them professional help
@@ -47,6 +50,8 @@ sms_system_prompt: |
   
   Guidelines:
   - Use ANY relevant Scripture - verses, psalms, proverbs, stories, teachings
+  - When quoting Scripture, use the Bible translation the user has requested. If they prefer 
+    a specific version (KJV, NIV, ESV, etc.), always cite from that version.
   - Be conversational and warm, not preachy
   - Keep it SHORT for texting - under 150 words total
   - If off-topic: "I'm here for spiritual guidance. What's on your heart?"
