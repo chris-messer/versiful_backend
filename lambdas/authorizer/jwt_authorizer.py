@@ -68,13 +68,13 @@ def handler(event, context):
 
     if not access_token:
         logger.error("Unauthorized - No access token")
-        return {"statusCode": 401, "body": json.dumps({"error": "Unauthorized - No access token"})}
+        return {"isAuthorized": False}
 
     try:
         public_key = get_public_key(access_token)
         if not public_key:
             logger.error("Invalid token - No matching public key")
-            return {"statusCode": 401, "body": json.dumps({"error": "Invalid token - No matching public key"})}
+            return {"isAuthorized": False}
 
         decoded_token = jwt.decode(access_token, public_key, algorithms=["RS256"])
 
@@ -87,7 +87,10 @@ def handler(event, context):
 
     except jwt.ExpiredSignatureError:
         logger.error('Received ExpiredSignatureError: Token expired')
-        return {"statusCode": 401, "body": json.dumps({"error": "Token expired"})}
+        return {"isAuthorized": False}
     except jwt.InvalidTokenError:
         logger.error('Received ExpiredSignatureError: Invalid token')
-        return {"statusCode": 403, "body": json.dumps({"error": "Invalid token"})}
+        return {"isAuthorized": False}
+    except Exception as e:
+        logger.error(f'Unexpected error in authorizer: {str(e)}')
+        return {"isAuthorized": False}

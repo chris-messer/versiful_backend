@@ -74,7 +74,11 @@ def ensure_sms_usage_record(phone_number: str, user_id: str):
 
 
 def create_user(event, headers):
-    user_id = event["requestContext"]["authorizer"]["userId"]
+    try:
+        user_id = event["requestContext"]["authorizer"]["userId"]
+    except (KeyError, TypeError):
+        return {"statusCode": 401, "body": json.dumps({"error": "Unauthorized - Missing userId"})}
+    
     if not user_id:
         return {"statusCode": 400, "body": json.dumps({"error": "Missing userId"})}
 
@@ -89,7 +93,11 @@ def create_user(event, headers):
 
 
 def get_user_profile(event, headers):
-    user_id = event["requestContext"]["authorizer"]["userId"]
+    try:
+        user_id = event["requestContext"]["authorizer"]["userId"]
+    except (KeyError, TypeError):
+        return {"statusCode": 401, "headers": headers, "body": json.dumps({"error": "Unauthorized - Missing userId"})}
+    
     if not user_id:
         return {"statusCode": 400, "headers": headers, "body": json.dumps({"error": "Missing userId"})}
 
@@ -101,7 +109,11 @@ def get_user_profile(event, headers):
 
 def update_user_settings(event, headers):
     try:
-        user_id = event["requestContext"]["authorizer"]["userId"]
+        try:
+            user_id = event["requestContext"]["authorizer"]["userId"]
+        except (KeyError, TypeError):
+            return {"statusCode": 401, "body": json.dumps({"error": "Unauthorized - Missing userId"})}
+        
         body = json.loads(event["body"])
 
         # Ensure the user item exists before attempting an update
