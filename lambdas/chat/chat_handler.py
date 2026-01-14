@@ -233,16 +233,14 @@ def process_chat_message(
             for msg in history
         ]
         
-        # Fetch user's bible version preference
-        bible_version = None
+        # Fetch user information (name and bible version)
+        user_info = {}
         if user_id:
-            bible_version = get_user_bible_version(user_id)
-            if bible_version:
-                logger.info("Using bible version %s for user %s", bible_version, user_id)
+            user_info = get_user_info(user_id)
         
         # If no user_id but we have a phone number (SMS from unregistered user), 
         # try to find user by phone number
-        if not bible_version and phone_number:
+        if not user_info and phone_number:
             try:
                 # Look up user by phone number
                 from boto3.dynamodb.conditions import Attr
@@ -252,12 +250,27 @@ def process_chat_message(
                 )
                 if response.get('Items'):
                     user_data = response['Items'][0]
-                    bible_version = user_data.get('bibleVersion')
                     if not user_id:
                         user_id = user_data.get('userId')
-                    logger.info("Found user by phone, using bible version: %s", bible_version)
+                    user_info = {
+                        'first_name': user_data.get('firstName'),
+                        'bible_version': user_data.get('bibleVersion'),
+                        'is_subscribed': user_data.get('isSubscribed', False),
+                        'plan': user_data.get('plan', 'free')
+                    }
+                    logger.info("Found user by phone, name: %s, bible version: %s", 
+                              user_info.get('first_name'), user_info.get('bible_version'))
             except Exception as e:
                 logger.warning("Error looking up user by phone: %s", str(e))
+        
+        # Extract info for agent
+        first_name = user_info.get('first_name')
+        bible_version = user_info.get('bible_version')
+        
+        if first_name:
+            logger.info("Using user's name: %s", first_name)
+        if bible_version:
+            logger.info("Using bible version: %s", bible_version)
         
         # Get agent and process
         agent = get_agent()
@@ -267,7 +280,8 @@ def process_chat_message(
             channel=channel,
             history=agent_history,
             user_id=user_id,
-            bible_version=bible_version
+            bible_version=bible_version,
+            user_first_name=first_name
         )
         
         assistant_response = result.get('response', '')
@@ -345,6 +359,37 @@ def get_user_bible_version(user_id: str) -> Optional[str]:
     except ClientError as e:
         logger.error("Error fetching user bible version: %s", str(e))
         return None
+
+
+def get_user_info(user_id: str) -> Dict[str, Any]:
+    """
+    Fetch user information from DynamoDB including name and bible version
+    
+    Args:
+        user_id: User ID
+        
+    Returns:
+        Dict with user info (first_name, bible_version, etc.) or empty dict
+    """
+    if not user_id:
+        return {}
+    
+    try:
+        response = users_table.get_item(Key={'userId': user_id})
+        if 'Item' in response:
+            user = response['Item']
+            return {
+                'first_name': user.get('firstName'),
+                'bible_version': user.get('bibleVersion'),
+                'is_subscribed': user.get('isSubscribed', False),
+                'plan': user.get('plan', 'free')
+            }
+        else:
+            logger.info("No user found for user_id: %s", user_id)
+            return {}
+    except ClientError as e:
+        logger.error("Error fetching user info: %s", str(e))
+        return {}
 
 
 def _deserialize_message(item: Dict[str, Any]) -> Dict[str, Any]:

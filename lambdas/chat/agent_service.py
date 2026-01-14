@@ -91,59 +91,6 @@ Versiful is a service that provides personalized biblical guidance and wisdom th
 Your conversations are private and secure. We take your privacy seriously and never share your personal information."""
 
 
-@tool
-def get_user_context(user_id: str) -> str:
-    """Get information about the current user including their name and subscription status.
-    
-    Use this tool when you need to:
-    - Address the user by name
-    - Check their subscription status
-    - Get their preferences
-    
-    Args:
-        user_id: The user's unique identifier
-        
-    Returns information about the user including first name, subscription status, and plan.
-    """
-    if not user_id:
-        return "User information not available (not logged in or no user_id provided)."
-    
-    try:
-        response = users_table.get_item(Key={'userId': user_id})
-        if 'Item' not in response:
-            return "User profile not found."
-        
-        user = response['Item']
-        first_name = user.get('firstName', '')
-        last_name = user.get('lastName', '')
-        is_subscribed = user.get('isSubscribed', False)
-        plan = user.get('plan', 'free')
-        bible_version = user.get('bibleVersion', 'Not set')
-        
-        # Build context string
-        context_parts = []
-        
-        if first_name:
-            context_parts.append(f"User's name: {first_name}")
-            if last_name:
-                context_parts[-1] += f" {last_name}"
-        
-        if is_subscribed:
-            context_parts.append(f"Subscription: Active ({plan} plan)")
-            context_parts.append("Access: Unlimited messages")
-        else:
-            context_parts.append(f"Subscription: Free plan")
-            context_parts.append("Access: 5 messages per month")
-        
-        context_parts.append(f"Preferred Bible version: {bible_version}")
-        
-        return "\n".join(context_parts)
-        
-    except ClientError as e:
-        logger.error(f"Error fetching user context: {str(e)}")
-        return "Unable to retrieve user information at this time."
-
-
 class AgentService:
     """
     LangChain-based agent service for biblical guidance
@@ -168,26 +115,19 @@ class AgentService:
         if api_key:
             os.environ['OPENAI_API_KEY'] = api_key
         
-        # Initialize tools
-        self.tools = [get_versiful_info, get_user_context]
+        # Initialize tools (just Versiful info)
+        self.tools = [get_versiful_info]
         
-        # Initialize LLM with tool binding
+        # LLM config
         llm_config = self.config['llm']
-        base_llm = ChatOpenAI(
-            model=llm_config['model'],
-            temperature=llm_config['temperature'],
-            max_tokens=llm_config['max_tokens']
-        )
-        self.llm = base_llm.bind_tools(self.tools)
+        self.llm_model = llm_config['model']
+        self.llm_temperature = llm_config['temperature']
+        self.llm_max_tokens = llm_config['max_tokens']
         
-        # Initialize SMS-specific LLM (with tools)
+        # SMS config
         sms_config = llm_config.get('sms', {})
-        base_sms_llm = ChatOpenAI(
-            model=llm_config['model'],
-            temperature=sms_config.get('temperature', llm_config['temperature']),
-            max_tokens=sms_config.get('max_tokens', 300)
-        )
-        self.sms_llm = base_sms_llm.bind_tools(self.tools)
+        self.sms_temperature = sms_config.get('temperature', llm_config['temperature'])
+        self.sms_max_tokens = sms_config.get('max_tokens', 300)
         
         # Initialize title generation LLM (using GPT-4o-mini for cost efficiency)
         self.title_llm = ChatOpenAI(
@@ -232,16 +172,31 @@ class AgentService:
         channel: str,
         is_off_topic: bool = False,
         bible_version: str = None,
-        user_id: str = None
+        user_first_name: str = None
     ) -> str:
         """Generate response using LLM with tool calling support"""
-        # Select appropriate LLM and system prompt
+        # Select appropriate LLM config and system prompt
         if channel == 'sms':
-            llm = self.sms_llm
+            llm_temperature = self.sms_temperature
+            llm_max_tokens = self.sms_max_tokens
             system_prompt = self.config.get('sms_system_prompt', self.config['system_prompt'])
         else:
-            llm = self.llm
+            llm_temperature = self.llm_temperature
+            llm_max_tokens = self.llm_max_tokens
             system_prompt = self.config['system_prompt']
+        
+        # Create LLM with tools bound
+        base_llm = ChatOpenAI(
+            model=self.llm_model,
+            temperature=llm_temperature,
+            max_tokens=llm_max_tokens
+        )
+        llm = base_llm.bind_tools(self.tools)
+        
+        # Inject user's name into system prompt if available
+        if user_first_name:
+            name_instruction = f"\n\nThe user's name is {user_first_name}. Feel free to address them by name when appropriate to create a warm, personal connection."
+            system_prompt = system_prompt + name_instruction
         
         # Inject bible version preference into system prompt
         if bible_version:
@@ -290,12 +245,8 @@ class AgentService:
                     for tool in self.tools:
                         if tool.name == tool_name:
                             try:
-                                # Special handling for get_user_context - inject user_id
-                                if tool_name == 'get_user_context' and user_id and 'user_id' not in tool_args:
-                                    tool_args['user_id'] = user_id
-                                
                                 tool_result = tool.invoke(tool_args)
-                                logger.info(f"Tool {tool_name} result: {tool_result[:100]}...")
+                                logger.info(f"Tool {tool_name} result: {tool_result[:200]}...")
                             except Exception as e:
                                 tool_result = f"Error executing tool: {str(e)}"
                                 logger.error(f"Tool execution error: {str(e)}")
@@ -340,7 +291,8 @@ class AgentService:
         channel: str,
         history: List[Dict[str, str]] = None,
         user_id: str = None,
-        bible_version: str = None
+        bible_version: str = None,
+        user_first_name: str = None
     ) -> Dict[str, Any]:
         """
         Process a message and generate a response
@@ -352,6 +304,7 @@ class AgentService:
             history: Previous messages in format [{"role": "user/assistant", "content": "..."}]
             user_id: Optional user ID
             bible_version: Optional preferred Bible version (e.g., 'KJV', 'NIV')
+            user_first_name: Optional user's first name for personalization
             
         Returns:
             Dict with 'response' and metadata
@@ -372,7 +325,7 @@ class AgentService:
             messages = history + [{"role": "user", "content": message}]
             
             # Generate LLM response
-            response = self._generate_llm_response(messages, channel, is_off_topic, bible_version, user_id)
+            response = self._generate_llm_response(messages, channel, is_off_topic, bible_version, user_first_name)
             
             # Format response
             response = self._format_response(response, channel)
