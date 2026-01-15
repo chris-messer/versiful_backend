@@ -128,6 +128,7 @@ module "lambdas" {
   allowed_cors_origins     = var.allowed_cors_origins
   frontend_domain          = var.environment == "prod" ? local.domain : "${var.environment}.${local.domain}"
   versiful_phone           = var.versiful_phone
+  posthog_apikey           = var.posthog_apikey
 }
 
 module "cognito" {

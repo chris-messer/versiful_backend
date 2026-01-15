@@ -6,6 +6,7 @@ import os
 import json
 import logging
 import re
+import uuid
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -14,7 +15,34 @@ import boto3
 from botocore.exceptions import ClientError
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables import RunnablePassthrough, RunnableLambda
+from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_openai import ChatOpenAI
+
+from posthog import Posthog
+
+# Try to import PostHog's LangChain CallbackHandler and trace
+POSTHOG_AVAILABLE = False
+POSTHOG_TRACE_AVAILABLE = False
+
+try:
+    from posthog.ai.langchain import CallbackHandler
+    POSTHOG_AVAILABLE = True
+    print("✅ PostHog CallbackHandler imported successfully")
+except ImportError as e:
+    POSTHOG_AVAILABLE = False
+    CallbackHandler = None
+    print(f"❌ PostHog CallbackHandler not available: {e}")
+
+try:
+    from posthog.ai import trace
+    POSTHOG_TRACE_AVAILABLE = True
+    print("✅ PostHog trace imported successfully")
+except ImportError as e:
+    POSTHOG_TRACE_AVAILABLE = False
+    trace = None
+    print(f"❌ PostHog trace not available: {e}")
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -129,13 +157,6 @@ class AgentService:
         self.sms_temperature = sms_config.get('temperature', llm_config['temperature'])
         self.sms_max_tokens = sms_config.get('max_tokens', 300)
         
-        # Initialize title generation LLM (using GPT-4o-mini for cost efficiency)
-        self.title_llm = ChatOpenAI(
-            model='gpt-4o-mini',
-            temperature=0.5,
-            max_tokens=50
-        )
-        
         logger.info("AgentService initialized with model: %s and %d tools", 
                    llm_config['model'], len(self.tools))
     
@@ -172,9 +193,52 @@ class AgentService:
         channel: str,
         is_off_topic: bool = False,
         bible_version: str = None,
-        user_first_name: str = None
+        user_first_name: str = None,
+        user_id: str = None,
+        thread_id: str = None,
+        phone_number: str = None
     ) -> str:
-        """Generate response using LLM with tool calling support"""
+        """Generate response using LLM with tool calling support via LangChain agent"""
+        # Initialize PostHog callback handler for this LLM call
+        posthog_api_key = os.environ.get('POSTHOG_API_KEY')
+        posthog_handler = None
+        
+        logger.info(f"PostHog API key present: {bool(posthog_api_key)}, PostHog available: {POSTHOG_AVAILABLE}")
+        
+        if posthog_api_key and POSTHOG_AVAILABLE:
+            try:
+                posthog_client = Posthog(
+                    posthog_api_key,
+                    host='https://us.i.posthog.com'
+                )
+                
+                logger.info(f"Creating PostHog CallbackHandler for user_id={user_id}, thread_id={thread_id}")
+                
+                # Generate unique trace_id for this message/interaction
+                # Each message gets its own trace, while thread_id groups messages in the same conversation
+                message_trace_id = str(uuid.uuid4())
+                
+                # Set trace name based on channel
+                trace_name = f"Versiful {channel.upper()} Chat"
+                
+                posthog_handler = CallbackHandler(
+                    client=posthog_client,
+                    distinct_id=user_id or phone_number or 'anonymous',
+                    trace_id=message_trace_id,  # Unique ID for this message's trace
+                    ai_session_id=thread_id,  # Session grouping for conversation
+                    properties={
+                        'environment': os.environ.get('ENVIRONMENT', 'dev'),
+                        'channel': channel,
+                        'thread_id': thread_id,  # Group by conversation thread
+                        'phone_number': phone_number,
+                        '$ai_trace_name': trace_name  # Set the trace display name
+                    }
+                )
+                
+                logger.info(f"PostHog CallbackHandler created successfully with trace_id={message_trace_id}, trace_name={trace_name}, ai_session_id={thread_id}")
+            except Exception as e:
+                logger.error(f"Error initializing PostHog handler: {e}", exc_info=True)
+        
         # Select appropriate LLM config and system prompt
         if channel == 'sms':
             llm_temperature = self.sms_temperature
@@ -184,14 +248,6 @@ class AgentService:
             llm_temperature = self.llm_temperature
             llm_max_tokens = self.llm_max_tokens
             system_prompt = self.config['system_prompt']
-        
-        # Create LLM with tools bound
-        base_llm = ChatOpenAI(
-            model=self.llm_model,
-            temperature=llm_temperature,
-            max_tokens=llm_max_tokens
-        )
-        llm = base_llm.bind_tools(self.tools)
         
         # Inject user's name into system prompt if available
         if user_first_name:
@@ -203,73 +259,88 @@ class AgentService:
             bible_instruction = f"\n\nIMPORTANT: When citing Bible verses, always use the {bible_version} translation. The user has specifically requested this version."
             system_prompt = system_prompt + bible_instruction
         
-        # Build messages for LLM
-        llm_messages = [SystemMessage(content=system_prompt)]
+        # If off-topic, add redirect guidance
+        if is_off_topic:
+            redirect = self.config['guardrails']['redirect_prompt']
+            system_prompt = system_prompt + f"\n\nGUIDANCE: {redirect}"
         
-        # Add conversation history (limit based on config)
+        # Create LLM with stream_usage enabled to capture token counts
+        llm = ChatOpenAI(
+            model=self.llm_model,
+            temperature=llm_temperature,
+            max_tokens=llm_max_tokens,
+            stream_usage=True  # Required for usage metadata even in non-streaming mode
+        )
+        
+        # Build conversation history for the agent
+        chat_history = []
         max_history = self.config['history']['context_window']
         recent_messages = messages[-max_history:] if len(messages) > max_history else messages
         
         for msg in recent_messages:
             if msg['role'] == 'user':
-                llm_messages.append(HumanMessage(content=msg['content']))
+                chat_history.append(HumanMessage(content=msg['content']))
             elif msg['role'] == 'assistant':
-                llm_messages.append(AIMessage(content=msg['content']))
+                chat_history.append(AIMessage(content=msg['content']))
         
-        # If off-topic, prepend redirect guidance
-        if is_off_topic:
-            redirect = self.config['guardrails']['redirect_prompt']
-            llm_messages.insert(1, SystemMessage(content=f"GUIDANCE: {redirect}"))
+        # Create prompt template for the agent
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            MessagesPlaceholder(variable_name="chat_history", optional=True),
+            ("human", "{input}"),
+            MessagesPlaceholder(variable_name="agent_scratchpad"),
+        ])
         
-        # Generate response with tool calling support
+        # Create agent with tools
+        agent = create_tool_calling_agent(llm, self.tools, prompt)
+        
+        # Create agent executor
+        agent_executor = AgentExecutor(
+            agent=agent,
+            tools=self.tools,
+            verbose=False,
+            handle_parsing_errors=True
+        )
+        
+        # Get the current user message (last message in messages list)
+        current_message = messages[-1]['content'] if messages else ""
+        
+        # Execute agent
         try:
-            response = llm.invoke(llm_messages)
+            response = agent_executor.invoke(
+                {
+                    "input": current_message,
+                    "chat_history": chat_history[:-1] if chat_history else []
+                },
+                config={"callbacks": [posthog_handler] if posthog_handler else []}
+            )
             
-            # Check if LLM wants to use tools
-            if hasattr(response, 'tool_calls') and response.tool_calls:
-                logger.info(f"LLM requested {len(response.tool_calls)} tool call(s)")
-                
-                # Add AI response with tool calls to message history
-                llm_messages.append(response)
-                
-                # Execute tool calls
-                for tool_call in response.tool_calls:
-                    tool_name = tool_call['name']
-                    tool_args = tool_call['args']
-                    tool_id = tool_call['id']
-                    
-                    logger.info(f"Executing tool: {tool_name} with args: {tool_args}")
-                    
-                    # Find and execute the tool
-                    tool_result = None
-                    for tool in self.tools:
-                        if tool.name == tool_name:
-                            try:
-                                tool_result = tool.invoke(tool_args)
-                                logger.info(f"Tool {tool_name} result: {tool_result[:200]}...")
-                            except Exception as e:
-                                tool_result = f"Error executing tool: {str(e)}"
-                                logger.error(f"Tool execution error: {str(e)}")
-                            break
-                    
-                    if tool_result is None:
-                        tool_result = f"Tool {tool_name} not found"
-                    
-                    # Add tool result to messages
-                    llm_messages.append(ToolMessage(
-                        content=str(tool_result),
-                        tool_call_id=tool_id
-                    ))
-                
-                # Get final response with tool results
-                final_response = llm.invoke(llm_messages)
-                return final_response.content
+            response_text = response.get('output', '')
             
-            # No tool calls, return direct response
-            return response.content
+            logger.info(f"Agent response received, text length: {len(response_text)}")
+            
+            # Flush PostHog events
+            if posthog_handler:
+                logger.info(f"PostHog handler exists, has client: {hasattr(posthog_handler, 'client')}")
+                if hasattr(posthog_handler, 'client'):
+                    logger.info("Shutting down PostHog client to flush events")
+                    posthog_handler.client.shutdown()
+                    logger.info("PostHog client shutdown complete")
+                else:
+                    logger.warning("PostHog handler has no client attribute")
+            else:
+                logger.info("No PostHog handler to flush")
+            
+            return response_text
             
         except Exception as e:
-            logger.error("Error generating response: %s", str(e))
+            logger.error("Error generating response: %s", str(e), exc_info=True)
+            
+            # Flush PostHog events even on error
+            if posthog_handler and hasattr(posthog_handler, 'client'):
+                logger.info("Shutting down PostHog client (error case)")
+                posthog_handler.client.shutdown()
+            
             return "I apologize, but I'm having trouble responding right now. Please try again in a moment."
     
     def _format_response(self, response: str, channel: str) -> str:
@@ -292,7 +363,8 @@ class AgentService:
         history: List[Dict[str, str]] = None,
         user_id: str = None,
         bible_version: str = None,
-        user_first_name: str = None
+        user_first_name: str = None,
+        phone_number: str = None
     ) -> Dict[str, Any]:
         """
         Process a message and generate a response
@@ -305,6 +377,7 @@ class AgentService:
             user_id: Optional user ID
             bible_version: Optional preferred Bible version (e.g., 'KJV', 'NIV')
             user_first_name: Optional user's first name for personalization
+            phone_number: Optional phone number (for SMS tracking)
             
         Returns:
             Dict with 'response' and metadata
@@ -325,7 +398,16 @@ class AgentService:
             messages = history + [{"role": "user", "content": message}]
             
             # Generate LLM response
-            response = self._generate_llm_response(messages, channel, is_off_topic, bible_version, user_first_name)
+            response = self._generate_llm_response(
+                messages, 
+                channel, 
+                is_off_topic, 
+                bible_version, 
+                user_first_name,
+                user_id,
+                thread_id,
+                phone_number
+            )
             
             # Format response
             response = self._format_response(response, channel)
@@ -338,18 +420,62 @@ class AgentService:
             "timestamp": datetime.utcnow().isoformat() + 'Z'
         }
     
-    def get_conversation_title(self, messages: List[Dict[str, str]]) -> str:
+    def get_conversation_title(self, messages: List[Dict[str, str]], user_id: str = None, thread_id: str = None, phone_number: str = None) -> str:
         """
         Generate a concise title for a conversation using GPT-4o-mini
         
         Args:
             messages: List of messages in the conversation
+            user_id: Optional user ID for tracking
+            thread_id: Optional thread ID for tracking
+            phone_number: Optional phone number for tracking
             
         Returns:
             A short title (max 50 chars)
         """
         if not messages:
             return "New Conversation"
+        
+        # Initialize PostHog callback handler for title generation
+        posthog_api_key = os.environ.get('POSTHOG_API_KEY')
+        posthog_handler = None
+        
+        logger.info(f"Title generation - PostHog API key present: {bool(posthog_api_key)}, PostHog available: {POSTHOG_AVAILABLE}")
+        
+        if posthog_api_key and POSTHOG_AVAILABLE:
+            try:
+                posthog_client = Posthog(
+                    posthog_api_key,
+                    host='https://us.i.posthog.com'
+                )
+                
+                # Generate unique trace_id for title generation
+                title_trace_id = str(uuid.uuid4())
+                
+                posthog_handler = CallbackHandler(
+                    client=posthog_client,
+                    distinct_id=user_id or phone_number or 'anonymous',
+                    trace_id=title_trace_id,  # Unique trace for title generation
+                    ai_session_id=thread_id,  # Session grouping for conversation
+                    properties={
+                        'environment': os.environ.get('ENVIRONMENT', 'dev'),
+                        'channel': 'title_generation',
+                        'thread_id': thread_id,
+                        'phone_number': phone_number,
+                        '$ai_trace_name': 'Versiful Title Generation'  # Set the trace display name
+                    }
+                )
+                logger.info(f"Title generation PostHog CallbackHandler created")
+            except Exception as e:
+                logger.error(f"Error initializing PostHog handler for title: {e}", exc_info=True)
+        
+        # Create title LLM with handler
+        title_llm = ChatOpenAI(
+            model='gpt-4o-mini',
+            temperature=0.5,
+            max_tokens=50,
+            callbacks=[posthog_handler] if posthog_handler else []
+        )
         
         # Build a summary of the conversation for title generation
         conversation_text = ""
@@ -370,7 +496,7 @@ Title:"""
         
         try:
             # Generate title using GPT-4o-mini
-            response = self.title_llm.invoke([HumanMessage(content=title_prompt)])
+            response = title_llm.invoke([HumanMessage(content=title_prompt)])
             title = response.content.strip()
             
             # Clean up the title
@@ -380,11 +506,21 @@ Title:"""
             if len(title) > 50:
                 title = title[:47] + "..."
             
+            # Flush PostHog events
+            if posthog_handler and hasattr(posthog_handler, 'client'):
+                logger.info("Shutting down PostHog client for title generation")
+                posthog_handler.client.shutdown()
+            
             logger.info("Generated conversation title: %s", title)
             return title if title else "New Conversation"
             
         except Exception as e:
             logger.error("Error generating title: %s", str(e))
+            
+            # Flush PostHog events even on error
+            if posthog_handler and hasattr(posthog_handler, 'client'):
+                posthog_handler.client.shutdown()
+            
             # Fallback to simple title generation
             first_user_msg = next((m for m in messages if m['role'] == 'user'), None)
             if not first_user_msg:

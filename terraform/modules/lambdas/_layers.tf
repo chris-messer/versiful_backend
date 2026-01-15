@@ -28,6 +28,7 @@ resource "aws_lambda_layer_version" "core_layer" {
   layer_name          = "${var.environment}-core-dependencies"
   compatible_runtimes = ["python3.11"]
   description         = "Core dependencies: requests"
+  source_code_hash    = filebase64sha256("${path.module}/../../../lambdas/layers/core/layer.zip")
   
   depends_on = [null_resource.package_core_layer]
 }
@@ -58,6 +59,7 @@ resource "aws_lambda_layer_version" "jwt_layer" {
   layer_name          = "${var.environment}-jwt-dependencies"
   compatible_runtimes = ["python3.11"]
   description         = "JWT dependencies: PyJWT, cryptography"
+  source_code_hash    = filebase64sha256("${path.module}/../../../lambdas/layers/jwt/layer.zip")
   
   depends_on = [null_resource.package_jwt_layer]
 }
@@ -88,6 +90,7 @@ resource "aws_lambda_layer_version" "sms_layer" {
   layer_name          = "${var.environment}-sms-dependencies"
   compatible_runtimes = ["python3.11"]
   description         = "SMS dependencies: twilio"
+  source_code_hash    = filebase64sha256("${path.module}/../../../lambdas/layers/sms/layer.zip")
   
   depends_on = [null_resource.package_sms_layer]
 }
@@ -136,7 +139,8 @@ resource "aws_lambda_layer_version" "langchain_layer" {
   filename            = "${path.module}/../../../lambdas/layers/langchain/layer.zip"
   layer_name          = "${var.environment}-langchain-dependencies"
   compatible_runtimes = ["python3.11"]
-  description         = "LangChain dependencies: langchain, langgraph, openai"
+  description         = "LangChain dependencies: langchain, langgraph, openai, posthog"
+  source_code_hash    = filebase64sha256("${path.module}/../../../lambdas/layers/langchain/layer.zip")
   
   depends_on = [null_resource.package_langchain_layer]
 }

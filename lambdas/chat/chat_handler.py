@@ -281,7 +281,8 @@ def process_chat_message(
             history=agent_history,
             user_id=user_id,
             bible_version=bible_version,
-            user_first_name=first_name
+            user_first_name=first_name,
+            phone_number=phone_number
         )
         
         assistant_response = result.get('response', '')
@@ -308,11 +309,24 @@ def process_chat_message(
         
         # Update session metadata if web channel
         if channel == 'web' and user_id and session_id:
-            # Generate title if this is first message
+            # Generate title if this is first message (simple title from user message)
             if len(history) == 0:
-                title = agent.get_conversation_title([
-                    {'role': 'user', 'content': message}
-                ])
+                # Simple title: first sentence or first 50 chars
+                simple_title = message.split('.')[0][:50]
+                update_session_metadata(user_id, session_id, title=simple_title, increment_count=True)
+            # Generate AI title after 5 messages (when history has 4 messages, this will be the 5th)
+            elif len(history) == 4:
+                # Get all messages including current one for title generation
+                all_messages = agent_history + [
+                    {'role': 'user', 'content': message},
+                    {'role': 'assistant', 'content': assistant_response}
+                ]
+                title = agent.get_conversation_title(
+                    messages=all_messages,
+                    user_id=user_id,
+                    thread_id=thread_id,
+                    phone_number=phone_number
+                )
                 update_session_metadata(user_id, session_id, title=title, increment_count=True)
             else:
                 update_session_metadata(user_id, session_id, increment_count=True)

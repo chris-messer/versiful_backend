@@ -52,6 +52,7 @@ resource "aws_lambda_function" "sms_function" {
       CHAT_FUNCTION_NAME= "${var.environment}-${var.project_name}-chat"
       SECRET_ARN        = var.secret_arn
       VERSIFUL_PHONE    = var.versiful_phone
+      POSTHOG_API_KEY   = var.posthog_apikey
     }
 
   }

@@ -64,3 +64,9 @@ variable "versiful_phone" {
   description = "Versiful phone number in E.164 format"
   type        = string
 }
+
+variable "posthog_apikey" {
+  description = "PostHog API key for analytics and LLM tracing"
+  type        = string
+  sensitive   = true
+}
