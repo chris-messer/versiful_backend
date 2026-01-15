@@ -38,6 +38,7 @@ resource "aws_lambda_function" "chat_function" {
       CHAT_MESSAGES_TABLE   = aws_dynamodb_table.chat_messages.name
       CHAT_SESSIONS_TABLE   = aws_dynamodb_table.chat_sessions.name
       USERS_TABLE           = "${var.environment}-${var.project_name}-users"
+      POSTHOG_API_KEY       = var.posthog_apikey
     }
   }
 
@@ -85,6 +86,7 @@ resource "aws_lambda_function" "web_chat_function" {
       CHAT_SESSIONS_TABLE   = aws_dynamodb_table.chat_sessions.name
       CHAT_FUNCTION_NAME    = aws_lambda_function.chat_function.function_name
       CORS_ORIGIN           = var.allowed_cors_origins[0]
+      POSTHOG_API_KEY       = var.posthog_apikey
     }
   }
 

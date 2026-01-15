@@ -13,8 +13,12 @@ import yaml
 import boto3
 from botocore.exceptions import ClientError
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
+from langchain_core.runnables import RunnablePassthrough
 from langchain_openai import ChatOpenAI
+from posthog import Posthog
+from posthog.ai.langchain import CallbackHandler
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -96,13 +100,14 @@ class AgentService:
     LangChain-based agent service for biblical guidance
     """
     
-    def __init__(self, config_path: str = None, api_key: str = None):
+    def __init__(self, config_path: str = None, api_key: str = None, posthog_api_key: str = None):
         """
         Initialize the agent service
         
         Args:
             config_path: Path to agent_config.yaml
             api_key: OpenAI API key (if not in env)
+            posthog_api_key: PostHog API key (if not in env)
         """
         # Load configuration
         if config_path is None:
@@ -114,6 +119,23 @@ class AgentService:
         # Set API key
         if api_key:
             os.environ['OPENAI_API_KEY'] = api_key
+        
+        # Initialize PostHog
+        self.posthog = None
+        posthog_key = posthog_api_key or os.environ.get('POSTHOG_API_KEY')
+        if posthog_key:
+            try:
+                # Initialize EXACTLY as in the working test - positional args, not named
+                self.posthog = Posthog(
+                    posthog_key,
+                    host='https://us.i.posthog.com'
+                )
+                logger.info("PostHog initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize PostHog: {str(e)}")
+                self.posthog = None
+        else:
+            logger.warning("PostHog API key not provided, tracing disabled")
         
         # Initialize tools (just Versiful info)
         self.tools = [get_versiful_info]
@@ -166,15 +188,87 @@ class AgentService:
         
         return False, None, False
     
+    def _create_posthog_callback(
+        self,
+        thread_id: str,
+        channel: str,
+        phone_number: str = None,
+        user_id: str = None,
+        trace_id: str = None
+    ) -> Optional[CallbackHandler]:
+        """
+        Create a PostHog CallbackHandler following official docs pattern
+        
+        Args:
+            thread_id: Thread identifier (used as session_id to group conversation)
+            channel: "sms" or "web"
+            phone_number: Phone number for SMS (used as session_id)
+            user_id: User ID for web (used in distinct_id)
+            trace_id: Trace ID to group related LLM calls for handling one message
+            
+        Returns:
+            CallbackHandler or None if PostHog is not initialized
+        
+        Note: PostHog SDK automatically creates trace hierarchy based on LangChain nesting.
+              We just provide trace_id, distinct_id, and custom properties.
+        """
+        if not self.posthog:
+            return None
+        
+        # Determine session_id based on channel
+        if channel == 'sms' and phone_number:
+            # Strip symbols from phone number for session_id
+            session_id = re.sub(r'\D', '', phone_number)
+        elif channel == 'web' and thread_id:
+            # For web, use thread_id as session_id
+            session_id = thread_id
+        else:
+            session_id = thread_id
+        
+        # Determine distinct_id based on available information
+        if user_id:
+            distinct_id = user_id
+        elif phone_number:
+            # For SMS without user_id, use stripped phone as distinct_id
+            distinct_id = re.sub(r'\D', '', phone_number)
+        else:
+            distinct_id = session_id
+        
+        try:
+            # Follow official PostHog LangChain docs pattern - EXACT from working test
+            callback_handler = CallbackHandler(
+                client=self.posthog,
+                distinct_id=distinct_id,
+                trace_id=trace_id,
+                properties={
+                    "conversation_id": session_id,
+                    "$ai_session_id": session_id,
+                    "channel": channel
+                },
+                privacy_mode=False
+            )
+            logger.info(
+                f"Created PostHog callback - trace_id: {trace_id}, conversation_id: {session_id}, "
+                f"distinct_id: {distinct_id}, channel: {channel}"
+            )
+            return callback_handler
+        except Exception as e:
+            logger.error(f"Failed to create PostHog callback handler: {str(e)}")
+            return None
+    
     def _generate_llm_response(
         self,
         messages: List[Dict[str, str]],
         channel: str,
         is_off_topic: bool = False,
         bible_version: str = None,
-        user_first_name: str = None
+        user_first_name: str = None,
+        thread_id: str = None,
+        phone_number: str = None,
+        user_id: str = None,
+        trace_id: str = None
     ) -> str:
-        """Generate response using LLM with tool calling support"""
+        """Generate response using LLM with tool calling support and PostHog tracing"""
         # Select appropriate LLM config and system prompt
         if channel == 'sms':
             llm_temperature = self.sms_temperature
@@ -184,14 +278,6 @@ class AgentService:
             llm_temperature = self.llm_temperature
             llm_max_tokens = self.llm_max_tokens
             system_prompt = self.config['system_prompt']
-        
-        # Create LLM with tools bound
-        base_llm = ChatOpenAI(
-            model=self.llm_model,
-            temperature=llm_temperature,
-            max_tokens=llm_max_tokens
-        )
-        llm = base_llm.bind_tools(self.tools)
         
         # Inject user's name into system prompt if available
         if user_first_name:
@@ -221,9 +307,33 @@ class AgentService:
             redirect = self.config['guardrails']['redirect_prompt']
             llm_messages.insert(1, SystemMessage(content=f"GUIDANCE: {redirect}"))
         
+        # Create PostHog callback handler
+        posthog_callback = self._create_posthog_callback(
+            thread_id=thread_id,
+            channel=channel,
+            phone_number=phone_number,
+            user_id=user_id,
+            trace_id=trace_id
+        )
+        
+        # Build config with callbacks if PostHog is available
+        config = {'callbacks': [posthog_callback]} if posthog_callback else {}
+        
+        # Create LLM with tools - use CHAIN pattern like the test
+        base_llm = ChatOpenAI(
+            model=self.llm_model,
+            temperature=llm_temperature,
+            max_tokens=llm_max_tokens
+        )
+        
+        # Create chain: passthrough messages | LLM with tools
+        # This matches the test pattern: prompt | model
+        chain = RunnablePassthrough() | base_llm.bind_tools(self.tools)
+        
         # Generate response with tool calling support
         try:
-            response = llm.invoke(llm_messages)
+            # Invoke chain (not direct LLM) - EXACT pattern from test
+            response = chain.invoke(llm_messages, config=config)
             
             # Check if LLM wants to use tools
             if hasattr(response, 'tool_calls') and response.tool_calls:
@@ -261,8 +371,8 @@ class AgentService:
                         tool_call_id=tool_id
                     ))
                 
-                # Get final response with tool results
-                final_response = llm.invoke(llm_messages)
+                # Get final response with tool results - use chain pattern
+                final_response = chain.invoke(llm_messages, config=config)
                 return final_response.content
             
             # No tool calls, return direct response
@@ -292,7 +402,9 @@ class AgentService:
         history: List[Dict[str, str]] = None,
         user_id: str = None,
         bible_version: str = None,
-        user_first_name: str = None
+        user_first_name: str = None,
+        phone_number: str = None,
+        trace_id: str = None
     ) -> Dict[str, Any]:
         """
         Process a message and generate a response
@@ -305,6 +417,8 @@ class AgentService:
             user_id: Optional user ID
             bible_version: Optional preferred Bible version (e.g., 'KJV', 'NIV')
             user_first_name: Optional user's first name for personalization
+            phone_number: Optional phone number (for SMS tracing)
+            trace_id: Optional trace ID to group related LLM calls (generated if not provided)
             
         Returns:
             Dict with 'response' and metadata
@@ -313,6 +427,13 @@ class AgentService:
         
         if history is None:
             history = []
+        
+        # Generate a trace ID for this message if not provided
+        # This groups all LLM calls for handling this message together
+        if not trace_id:
+            import uuid
+            trace_id = str(uuid.uuid4())
+            logger.info(f"Generated trace_id for message: {trace_id}")
         
         # Check guardrails first
         needs_crisis, crisis_response, is_off_topic = self._check_guardrails(message)
@@ -325,25 +446,53 @@ class AgentService:
             messages = history + [{"role": "user", "content": message}]
             
             # Generate LLM response
-            response = self._generate_llm_response(messages, channel, is_off_topic, bible_version, user_first_name)
+            response = self._generate_llm_response(
+                messages, 
+                channel, 
+                is_off_topic, 
+                bible_version, 
+                user_first_name,
+                thread_id=thread_id,
+                phone_number=phone_number,
+                user_id=user_id,
+                trace_id=trace_id
+            )
             
             # Format response
             response = self._format_response(response, channel)
+        
+        # Flush PostHog events before returning (critical for Lambda)
+        if self.posthog:
+            try:
+                self.posthog.flush()
+                logger.info("Flushed PostHog events")
+            except Exception as e:
+                logger.error(f"Error flushing PostHog: {str(e)}")
         
         return {
             "response": response,
             "thread_id": thread_id,
             "channel": channel,
             "needs_crisis_intervention": needs_crisis,
-            "timestamp": datetime.utcnow().isoformat() + 'Z'
+            "timestamp": datetime.utcnow().isoformat() + 'Z',
+            "trace_id": trace_id
         }
     
-    def get_conversation_title(self, messages: List[Dict[str, str]]) -> str:
+    def get_conversation_title(
+        self, 
+        messages: List[Dict[str, str]], 
+        thread_id: str = None,
+        user_id: str = None,
+        trace_id: str = None
+    ) -> str:
         """
         Generate a concise title for a conversation using GPT-4o-mini
         
         Args:
             messages: List of messages in the conversation
+            thread_id: Thread ID of the conversation being summarized (used for PostHog tracing)
+            user_id: Optional user ID for PostHog tracking
+            trace_id: Optional trace ID to group with parent message handling
             
         Returns:
             A short title (max 50 chars)
@@ -368,9 +517,45 @@ Conversation:
 
 Title:"""
         
+        # Create PostHog callback handler for title generation
+        posthog_callback = None
+        if thread_id and self.posthog:
+            try:
+                # Determine distinct_id
+                distinct_id = user_id or thread_id
+                
+                # Follow official PostHog LangChain docs pattern - EXACT from working test
+                posthog_callback = CallbackHandler(
+                    client=self.posthog,
+                    distinct_id=distinct_id,
+                    trace_id=trace_id,  # Use same trace_id to group with chat generation
+                    properties={
+                        "conversation_id": thread_id,
+                        "$ai_session_id": thread_id,
+                        "channel": "web",
+                        "operation": "title_generation"
+                    },
+                    privacy_mode=False
+                )
+                logger.info(f"Created PostHog callback for title generation - trace_id: {trace_id}, conversation_id: {thread_id}")
+            except Exception as e:
+                logger.error(f"Failed to create PostHog callback for title generation: {str(e)}")
+        
+        # Build config with callbacks if PostHog is available
+        config = {'callbacks': [posthog_callback]} if posthog_callback else {}
+        
         try:
-            # Generate title using GPT-4o-mini
-            response = self.title_llm.invoke([HumanMessage(content=title_prompt)])
+            # Create chain pattern - EXACT like the test: prompt | model
+            prompt = ChatPromptTemplate.from_messages([
+                ("user", "{input}")
+            ])
+            chain = prompt | self.title_llm
+            
+            # Generate title using chain.invoke (not direct llm.invoke)
+            response = chain.invoke(
+                {"input": title_prompt},
+                config=config
+            )
             title = response.content.strip()
             
             # Clean up the title
@@ -379,6 +564,14 @@ Title:"""
             # Ensure it's not too long
             if len(title) > 50:
                 title = title[:47] + "..."
+            
+            # Flush PostHog events before returning (critical for Lambda)
+            if self.posthog:
+                try:
+                    self.posthog.flush()
+                    logger.info("Flushed PostHog events for title generation")
+                except Exception as e:
+                    logger.error(f"Error flushing PostHog: {str(e)}")
             
             logger.info("Generated conversation title: %s", title)
             return title if title else "New Conversation"
@@ -396,12 +589,12 @@ Title:"""
             return title or "New Conversation"
 
 
-def get_agent_service(api_key: str = None) -> AgentService:
+def get_agent_service(api_key: str = None, posthog_api_key: str = None) -> AgentService:
     """
     Factory function to get agent service instance
     Useful for Lambda handlers to initialize once
     """
-    return AgentService(api_key=api_key)
+    return AgentService(api_key=api_key, posthog_api_key=posthog_api_key)
 
 
 # For testing

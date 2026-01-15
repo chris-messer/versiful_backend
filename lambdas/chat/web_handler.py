@@ -275,19 +275,22 @@ def invoke_chat_handler(
         return {'success': False, 'error': str(e)}
 
 
-def generate_ai_title(messages: List[Dict[str, Any]]) -> str:
+def generate_ai_title(messages: List[Dict[str, Any]], thread_id: str = None, user_id: str = None, trace_id: str = None) -> str:
     """
     Generate an AI-powered title using GPT-4o-mini
     
     Args:
         messages: List of conversation messages
+        thread_id: Thread ID of the conversation being summarized (for PostHog tracing)
+        user_id: User ID for PostHog tracking
+        trace_id: Trace ID to group with related LLM calls
         
     Returns:
         A short, descriptive title
     """
     try:
         agent = get_agent()
-        title = agent.get_conversation_title(messages)
+        title = agent.get_conversation_title(messages, thread_id=thread_id, user_id=user_id, trace_id=trace_id)
         logger.info("Generated AI title: %s", title)
         return title
     except Exception as e:
@@ -419,7 +422,10 @@ def handle_post_message(event: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         try:
             messages = get_message_history(thread_id, limit=10)
             if messages and len(messages) >= 4:
-                title = generate_ai_title(messages)
+                # Generate NEW trace_id for title generation
+                import uuid
+                title_trace_id = str(uuid.uuid4())
+                title = generate_ai_title(messages, thread_id=thread_id, user_id=user_id, trace_id=title_trace_id)
                 update_session_title(user_id, session_id, title)
         except Exception as e:
             logger.error("Error generating AI title: %s", str(e))
@@ -528,7 +534,9 @@ def handle_update_session_title(event: Dict[str, Any], user_id: str) -> Dict[str
     
     # Generate AI-powered title
     try:
-        title = generate_ai_title(messages)
+        import uuid
+        trace_id = str(uuid.uuid4())  # Generate new trace for manual title regeneration
+        title = generate_ai_title(messages, thread_id=thread_id, user_id=user_id, trace_id=trace_id)
         update_session_title(user_id, session_id, title)
         
         return success_response({

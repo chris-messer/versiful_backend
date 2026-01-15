@@ -55,7 +55,11 @@ def get_agent() -> Any:
             api_key = secrets.get('gpt') or secrets.get('openai_api_key')
             if not api_key:
                 raise ValueError("OpenAI API key not found in secrets")
-            _agent_service = get_agent_service(api_key=api_key)
+            
+            # Get PostHog API key from environment or secrets
+            posthog_api_key = os.environ.get('POSTHOG_API_KEY') or secrets.get('posthog_apikey')
+            
+            _agent_service = get_agent_service(api_key=api_key, posthog_api_key=posthog_api_key)
             logger.info("Agent service initialized")
         except Exception as e:
             logger.error("Failed to initialize agent service: %s", str(e))
@@ -281,10 +285,12 @@ def process_chat_message(
             history=agent_history,
             user_id=user_id,
             bible_version=bible_version,
-            user_first_name=first_name
+            user_first_name=first_name,
+            phone_number=phone_number
         )
         
         assistant_response = result.get('response', '')
+        trace_id = result.get('trace_id')  # Get trace_id from agent result
         
         # Save user message
         save_message(
@@ -308,11 +314,22 @@ def process_chat_message(
         
         # Update session metadata if web channel
         if channel == 'web' and user_id and session_id:
-            # Generate title if this is first message
-            if len(history) == 0:
-                title = agent.get_conversation_title([
-                    {'role': 'user', 'content': message}
-                ])
+            # Generate title on first message, then regenerate every 5 messages
+            history_length = len(history)
+            if history_length == 0 or (history_length > 0 and history_length % 5 == 0):
+                # Generate NEW trace_id for title generation (should not share with message trace)
+                import uuid
+                title_trace_id = str(uuid.uuid4())
+                
+                # For first message, use just that message. For updates, use recent history
+                messages_for_title = [{'role': 'user', 'content': message}] if history_length == 0 else history[-10:]
+                
+                title = agent.get_conversation_title(
+                    messages=messages_for_title,
+                    thread_id=thread_id,
+                    user_id=user_id,
+                    trace_id=title_trace_id  # Use separate trace_id for title generation
+                )
                 update_session_metadata(user_id, session_id, title=title, increment_count=True)
             else:
                 update_session_metadata(user_id, session_id, increment_count=True)
