@@ -112,6 +112,29 @@ resource "aws_iam_policy" "secrets_manager_policy" {
   })
 }
 
+# Grant Lambdas access to Cognito user pool admin operations
+resource "aws_iam_policy" "cognito_admin_policy" {
+  name        = "${var.environment}-${var.project_name}-LambdaCognitoAdminPolicy"
+  description = "Allows Lambda to perform Cognito admin operations for user signup"
+  tags = {
+    Environment = var.environment
+  }
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "cognito-idp:AdminConfirmSignUp",
+          "cognito-idp:AdminGetUser",
+          "cognito-idp:AdminUpdateUserAttributes"
+        ]
+        Effect   = "Allow"
+        Resource = "arn:aws:cognito-idp:${var.region}:*:userpool/${var.user_pool_id}"
+      }
+    ]
+  })
+}
+
 # Attach execute policy to role
 resource "aws_iam_role_policy_attachment" "lambda_policy" {
   role       = aws_iam_role.lambda_exec_role.name
@@ -140,6 +163,12 @@ resource "aws_iam_role_policy_attachment" "attach_chat_dynamodb_policy" {
 resource "aws_iam_role_policy_attachment" "attach_lambda_invoke_policy" {
   role       = aws_iam_role.lambda_exec_role.name
   policy_arn = aws_iam_policy.lambda_invoke_policy.arn
+}
+
+# Attach cognito admin policy to role
+resource "aws_iam_role_policy_attachment" "attach_cognito_admin_policy" {
+  role       = aws_iam_role.lambda_exec_role.name
+  policy_arn = aws_iam_policy.cognito_admin_policy.arn
 }
 
 # Note: aws_api_gateway_account and related IAM role removed
