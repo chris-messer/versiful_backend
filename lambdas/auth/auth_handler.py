@@ -89,11 +89,15 @@ def handler(event, context):
             ("/auth/signup", "POST"): handle_signup,
             ("/auth/refresh", "POST"): handle_refresh,
             ("/auth/logout", "POST"): handle_logout,
+            ("/auth/forgot-password", "POST"): handle_forgot_password,
+            ("/auth/reset-password", "POST"): handle_reset_password,
             ("/auth/login", "OPTIONS"): handle_options,
             ("/auth/signup", "OPTIONS"): handle_options,
             ("/auth/callback", "OPTIONS"): handle_options,
             ("/auth/refresh", "OPTIONS"): handle_options,
             ("/auth/logout", "OPTIONS"): handle_options,
+            ("/auth/forgot-password", "OPTIONS"): handle_options,
+            ("/auth/reset-password", "OPTIONS"): handle_options,
         }
         #     return rval
         handler = ROUTES.get((route, method), None)
@@ -241,6 +245,8 @@ def handle_login(event):
         }
 
     except cognito_client.exceptions.NotAuthorizedException:
+        return error_response(401, 'Invalid username or password')
+    except cognito_client.exceptions.UserNotFoundException:
         return error_response(401, 'Invalid username or password')
     except Exception as e:
         logger.error(f"Login error: {str(e)}")
@@ -400,6 +406,96 @@ def handle_logout(event):
 
     except Exception as e:
         print(f"Error in logout: {str(e)}")
+        return error_response(500, 'Internal server error')
+
+
+def handle_forgot_password(event):
+    """
+    Initiate forgot password flow - sends verification code to user's email
+    """
+    try:
+        body = json.loads(event.get('body', '{}'))
+        username = body.get('username')  # Email address
+
+        if not username:
+            return error_response(400, 'Missing email address')
+
+        # Initiate forgot password flow - Cognito will send verification code
+        cognito_client.forgot_password(
+            ClientId=CLIENT_ID,
+            Username=username
+        )
+
+        logger.info(f"Password reset code sent to {username}")
+
+        return {
+            'statusCode': 200,
+            'headers': get_cors_headers(),
+            'body': json.dumps({
+                'message': 'If an account exists with this email, a password reset code has been sent.'
+            })
+        }
+
+    except cognito_client.exceptions.UserNotFoundException:
+        # Don't reveal if user exists or not for security
+        logger.warning(f"Password reset attempted for non-existent user: {username}")
+        return {
+            'statusCode': 200,
+            'headers': get_cors_headers(),
+            'body': json.dumps({
+                'message': 'If an account exists with this email, a password reset code has been sent.'
+            })
+        }
+    except cognito_client.exceptions.LimitExceededException:
+        return error_response(429, 'Too many requests. Please try again later.')
+    except Exception as e:
+        logger.error(f"Forgot password error: {str(e)}")
+        return error_response(500, 'Internal server error')
+
+
+def handle_reset_password(event):
+    """
+    Complete password reset using verification code
+    """
+    try:
+        body = json.loads(event.get('body', '{}'))
+        username = body.get('username')  # Email address
+        code = body.get('code')
+        new_password = body.get('password')
+
+        if not username or not code or not new_password:
+            return error_response(400, 'Missing required fields: username, code, and password')
+
+        # Confirm forgot password with the code
+        cognito_client.confirm_forgot_password(
+            ClientId=CLIENT_ID,
+            Username=username,
+            ConfirmationCode=code,
+            Password=new_password
+        )
+
+        logger.info(f"Password successfully reset for {username}")
+
+        return {
+            'statusCode': 200,
+            'headers': get_cors_headers(),
+            'body': json.dumps({'message': 'Password reset successful. You can now sign in with your new password.'})
+        }
+
+    except cognito_client.exceptions.CodeMismatchException:
+        return error_response(400, 'Invalid verification code. Please check the code and try again.')
+    except cognito_client.exceptions.ExpiredCodeException:
+        return error_response(400, 'Verification code has expired. Please request a new code.')
+    except cognito_client.exceptions.InvalidPasswordException as e:
+        error_message = str(e)
+        logger.error(f"Reset password error: Invalid password - {error_message}")
+        if "Password did not conform" in error_message:
+            return error_response(400, 'Password must be at least 6 characters long')
+        return error_response(400, error_message)
+    except cognito_client.exceptions.UserNotFoundException:
+        return error_response(404, 'User not found')
+    except Exception as e:
+        logger.error(f"Reset password error: {str(e)}")
         return error_response(500, 'Internal server error')
 
 

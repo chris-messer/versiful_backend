@@ -126,7 +126,9 @@ resource "aws_iam_policy" "cognito_admin_policy" {
         Action = [
           "cognito-idp:AdminConfirmSignUp",
           "cognito-idp:AdminGetUser",
-          "cognito-idp:AdminUpdateUserAttributes"
+          "cognito-idp:AdminUpdateUserAttributes",
+          "cognito-idp:ForgotPassword",
+          "cognito-idp:ConfirmForgotPassword"
         ]
         Effect   = "Allow"
         Resource = "arn:aws:cognito-idp:${var.region}:*:userpool/${var.user_pool_id}"
