@@ -133,3 +133,22 @@ def send_cancellation_sms(phone_number: str):
     logger.info(f"Sending cancellation SMS to {phone_number}")
     return send_sms(phone_number, message)
 
+
+def send_first_time_texter_welcome_sms(phone_number: str):
+    """
+    Send welcome message to first-time texters who aren't registered users
+    Prompts them to visit versiful.io for more information
+    """
+    message = (
+        f"Welcome to Versiful! 🙏\n\n"
+        f"We provide biblical guidance and wisdom through text.\n\n"
+        f"Visit https://{VERSIFUL_DOMAIN} to create an account and unlock:\n"
+        f"• Personalized guidance\n"
+        f"• Saved conversation history\n"
+        f"• Unlimited messages\n\n"
+        f"Reply HELP for commands or text us your question."
+    )
+    
+    logger.info(f"Sending first-time texter welcome SMS to {phone_number}")
+    return send_sms(phone_number, message)
+

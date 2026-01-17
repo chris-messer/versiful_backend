@@ -18,8 +18,9 @@ try:
         FREE_MONTHLY_LIMIT,
         NUDGE_LIMIT,
         normalize_phone_number,
+        sms_usage_table,
     )
-except Exception:
+except ImportError:
     from lambdas.sms.helpers import (
         send_message,
         parse_url_string,
@@ -31,15 +32,16 @@ except Exception:
         FREE_MONTHLY_LIMIT,
         NUDGE_LIMIT,
         normalize_phone_number,
+        sms_usage_table,
     )
 
 # Import secrets helper and SMS notifications
 try:
     from secrets_helper import get_secret
-    from sms_notifications import send_cancellation_sms
+    from sms_notifications import send_cancellation_sms, send_first_time_texter_welcome_sms
 except ImportError:
     from lambdas.shared.secrets_helper import get_secret
-    from lambdas.shared.sms_notifications import send_cancellation_sms
+    from lambdas.shared.sms_notifications import send_cancellation_sms, send_first_time_texter_welcome_sms
 
 import boto3
 from boto3.dynamodb.conditions import Attr
@@ -481,6 +483,17 @@ def handler(event, context):
 
     logger.info("Message body found!")
     try:
+        # Check if this is a first-time texter (no sms_usage record exists)
+        # We check BEFORE _evaluate_usage creates the record
+        existing_usage = sms_usage_table.get_item(Key={"phoneNumber": from_num_normalized}).get("Item")
+        
+        is_first_time_texter = existing_usage is None
+        
+        # If first-time texter, send welcome message
+        if is_first_time_texter:
+            logger.info(f"First-time texter detected: {from_num_normalized}")
+            send_first_time_texter_welcome_sms(from_num_normalized)
+        
         decision = _evaluate_usage(from_num_normalized)
         logger.info("Usage decision: %s", decision["reason"])
 
