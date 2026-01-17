@@ -322,9 +322,15 @@ def handle_signup(event):
         }
 
     except cognito_client.exceptions.UsernameExistsException:
+        logger.error("Signup error: Email already exists")
         return error_response(409, 'An account with this email already exists')
     except cognito_client.exceptions.InvalidPasswordException as e:
-        return error_response(400, str(e))
+        error_message = str(e)
+        logger.error(f"Signup error: Invalid password - {error_message}")
+        # Parse Cognito error message to extract user-friendly message
+        if "Password did not conform" in error_message:
+            return error_response(400, 'Password must be at least 6 characters long')
+        return error_response(400, error_message)
     except Exception as e:
         logger.error(f"Signup error: {str(e)}")
         return error_response(500, 'Internal server error')

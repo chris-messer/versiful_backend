@@ -23,14 +23,17 @@ resource "aws_cognito_user_pool" "user_pool" {
   # Allow users to sign in with email
   username_attributes = ["email"]
 
-  # Password policy
+  # Password policy - Minimal requirements for elderly users
   password_policy {
-    minimum_length    = 8
+    minimum_length    = 6
     require_lowercase = false
     require_numbers   = false
     require_symbols   = false
     require_uppercase = false
   }
+  
+  # Auto-verify email to reduce friction (no verification code needed)
+  auto_verified_attributes = []
 
   # MFA settings (optional)
   mfa_configuration = "OFF"
