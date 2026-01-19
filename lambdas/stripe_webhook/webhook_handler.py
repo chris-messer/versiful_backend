@@ -125,20 +125,15 @@ def handle_checkout_completed(session):
     )
     
     # LOG THE ENTIRE SUBSCRIPTION OBJECT
-    import json
-    logger.info(f"RAW SUBSCRIPTION OBJECT: {json.dumps(dict(subscription), default=str, indent=2)}")
-    
-    # LOG THE ENTIRE SUBSCRIPTION OBJECT
-    import json
     logger.info(f"RAW SUBSCRIPTION OBJECT: {json.dumps(dict(subscription), default=str, indent=2)}")
     
     # Access plan information
     plan_interval = subscription['items']['data'][0]['price']['recurring']['interval']
     plan = "monthly" if plan_interval == "month" else "annual"
     
-    # Get current_period_end from the subscription item, NOT the subscription root
-    period_end = subscription['items']['data'][0].get('current_period_end')
-    logger.info(f"Got current_period_end from subscription item: {period_end}")
+    # Get current_period_end from the subscription object (not from items)
+    period_end = subscription.get('current_period_end')
+    logger.info(f"Got current_period_end from subscription: {period_end}")
     
     update_expression = """
         SET stripeCustomerId = :cid,
@@ -228,8 +223,8 @@ def handle_subscription_updated(subscription):
     plan_interval = subscription["items"]["data"][0]["price"]["recurring"]["interval"]
     plan = "monthly" if plan_interval == "month" else "annual"
     
-    # Get current_period_end from subscription item
-    period_end = subscription["items"]["data"][0].get('current_period_end')
+    # Get current_period_end from subscription object (not from items)
+    period_end = subscription.get('current_period_end')
     if not period_end:
         logger.warning(f"No current_period_end in subscription update for {subscription['id']}")
     
@@ -397,8 +392,8 @@ def handle_payment_succeeded(invoice):
     user = response["Items"][0]
     subscription = stripe.Subscription.retrieve(subscription_id)
     
-    # Get current_period_end from subscription item
-    period_end = subscription["items"]["data"][0].get('current_period_end')
+    # Get current_period_end from subscription object (not from items)
+    period_end = subscription.get('current_period_end')
     if not period_end:
         logger.warning(f"No current_period_end in subscription {subscription_id}")
     
