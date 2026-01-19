@@ -27,9 +27,10 @@ resource "aws_lambda_function" "stripe_webhook_function" {
 
   environment {
     variables = {
-      ENVIRONMENT  = var.environment
-      PROJECT_NAME = var.project_name
-      SECRET_ARN   = var.secret_arn
+      ENVIRONMENT    = var.environment
+      PROJECT_NAME   = var.project_name
+      SECRET_ARN     = var.secret_arn
+      VERSIFUL_PHONE = var.versiful_phone
     }
   }
 
