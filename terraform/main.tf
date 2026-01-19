@@ -47,6 +47,7 @@ module "secrets" {
   # Stripe keys
   stripe_publishable_key = var.stripe_publishable_key
   stripe_secret_key      = var.stripe_secret_key
+  stripe_webhook_secret  = var.stripe_webhook_secret
 }
 
 module "s3" {

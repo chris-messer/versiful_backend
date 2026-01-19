@@ -104,6 +104,12 @@ variable "stripe_secret_key" {
   sensitive   = true
 }
 
+variable "stripe_webhook_secret" {
+  description = "Stripe webhook signing secret (get from Stripe Dashboard webhook settings)"
+  type        = string
+  sensitive   = true
+}
+
 variable "versiful_phone" {
   description = "Versiful phone number in E.164 format (e.g., +18336811158)"
   type        = string

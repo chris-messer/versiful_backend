@@ -99,3 +99,9 @@ variable "stripe_secret_key" {
   type        = string
   sensitive   = true
 }
+
+variable "stripe_webhook_secret" {
+  description = "Stripe webhook signing secret (whsec_...)"
+  type        = string
+  sensitive   = true
+}

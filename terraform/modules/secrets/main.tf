@@ -21,6 +21,7 @@ resource "aws_secretsmanager_secret_version" "secret_version" {
     "USER_POOL_ID"            = var.test_user_pool_id,
     # Stripe keys
     "stripe_publishable_key"  = var.stripe_publishable_key,
-    "stripe_secret_key"       = var.stripe_secret_key
+    "stripe_secret_key"       = var.stripe_secret_key,
+    "stripe_webhook_secret"   = var.stripe_webhook_secret
   })
 }
