@@ -27,11 +27,36 @@ resource "aws_dynamodb_table" "chat_messages" {
     type = "S"
   }
 
+  attribute {
+    name = "messageId"
+    type = "S"
+  }
+
+  attribute {
+    name = "twilioSid"
+    type = "S"
+  }
+
   # GSI for querying by user
   global_secondary_index {
     name            = "UserMessagesIndex"
     hash_key        = "userId"
     range_key       = "timestamp"
+    projection_type = "ALL"
+  }
+
+  # GSI for querying by message UUID (for cost tracking and lookups)
+  global_secondary_index {
+    name            = "MessageUuidIndex"
+    hash_key        = "messageId"
+    range_key       = "timestamp"
+    projection_type = "ALL"
+  }
+
+  # GSI for querying by Twilio SID (for callback cost updates)
+  global_secondary_index {
+    name            = "TwilioSidIndex"
+    hash_key        = "twilioSid"
     projection_type = "ALL"
   }
 

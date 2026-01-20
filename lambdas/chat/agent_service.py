@@ -194,7 +194,8 @@ class AgentService:
         channel: str,
         phone_number: str = None,
         user_id: str = None,
-        trace_id: str = None
+        trace_id: str = None,
+        message_uuid: str = None
     ) -> Optional[CallbackHandler]:
         """
         Create a PostHog CallbackHandler following official docs pattern
@@ -205,6 +206,7 @@ class AgentService:
             phone_number: Phone number for SMS (used as session_id)
             user_id: User ID for web (used in distinct_id)
             trace_id: Trace ID to group related LLM calls for handling one message
+            message_uuid: Message UUID from DynamoDB for cost tracking correlation
             
         Returns:
             CallbackHandler or None if PostHog is not initialized
@@ -235,21 +237,28 @@ class AgentService:
             distinct_id = session_id
         
         try:
+            # Build properties dict
+            properties = {
+                "conversation_id": session_id,
+                "$ai_session_id": session_id,
+                "channel": channel
+            }
+            
+            # Add message_uuid if provided (for cost tracking correlation)
+            if message_uuid:
+                properties["message_uuid"] = message_uuid
+            
             # Follow official PostHog LangChain docs pattern - EXACT from working test
             callback_handler = CallbackHandler(
                 client=self.posthog,
                 distinct_id=distinct_id,
                 trace_id=trace_id,
-                properties={
-                    "conversation_id": session_id,
-                    "$ai_session_id": session_id,
-                    "channel": channel
-                },
+                properties=properties,
                 privacy_mode=False
             )
             logger.info(
                 f"Created PostHog callback - trace_id: {trace_id}, conversation_id: {session_id}, "
-                f"distinct_id: {distinct_id}, channel: {channel}"
+                f"distinct_id: {distinct_id}, channel: {channel}, message_uuid: {message_uuid}"
             )
             return callback_handler
         except Exception as e:
@@ -266,9 +275,23 @@ class AgentService:
         thread_id: str = None,
         phone_number: str = None,
         user_id: str = None,
-        trace_id: str = None
-    ) -> str:
-        """Generate response using LLM with tool calling support and PostHog tracing"""
+        trace_id: str = None,
+        message_uuid: str = None
+    ) -> Dict[str, Any]:
+        """
+        Generate response using LLM with tool calling support and PostHog tracing
+        
+        Returns dict with 'content' and 'usage' (token usage and cost data)
+        """
+        # Import cost calculator (from Lambda layer)
+        try:
+            from cost_calculator import calculate_gpt_cost
+        except ImportError:
+            # Fallback - try to import from shared directory
+            import sys
+            sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
+            from cost_calculator import calculate_gpt_cost
+        
         # Select appropriate LLM config and system prompt
         if channel == 'sms':
             llm_temperature = self.sms_temperature
@@ -313,7 +336,8 @@ class AgentService:
             channel=channel,
             phone_number=phone_number,
             user_id=user_id,
-            trace_id=trace_id
+            trace_id=trace_id,
+            message_uuid=message_uuid
         )
         
         # Build config with callbacks if PostHog is available
@@ -334,6 +358,26 @@ class AgentService:
         try:
             # Invoke chain (not direct LLM) - EXACT pattern from test
             response = chain.invoke(llm_messages, config=config)
+            
+            # Extract usage metadata for cost tracking
+            usage_data = None
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                usage = response.usage_metadata
+                # Calculate cost
+                cost = calculate_gpt_cost(
+                    model=self.llm_model,
+                    input_tokens=usage.get('input_tokens', 0),
+                    output_tokens=usage.get('output_tokens', 0)
+                )
+                
+                usage_data = {
+                    'model': self.llm_model,
+                    'input_tokens': usage.get('input_tokens', 0),
+                    'output_tokens': usage.get('output_tokens', 0),
+                    'total_tokens': usage.get('total_tokens', 0),
+                    'cost_usd': float(cost) if cost else None
+                }
+                logger.info(f"GPT usage: {usage_data}")
             
             # Check if LLM wants to use tools
             if hasattr(response, 'tool_calls') and response.tool_calls:
@@ -373,14 +417,42 @@ class AgentService:
                 
                 # Get final response with tool results - use chain pattern
                 final_response = chain.invoke(llm_messages, config=config)
-                return final_response.content
+                
+                # Update usage data with final response (add tool call costs)
+                if hasattr(final_response, 'usage_metadata') and final_response.usage_metadata:
+                    usage = final_response.usage_metadata
+                    cost = calculate_gpt_cost(
+                        model=self.llm_model,
+                        input_tokens=usage.get('input_tokens', 0),
+                        output_tokens=usage.get('output_tokens', 0)
+                    )
+                    
+                    usage_data = {
+                        'model': self.llm_model,
+                        'input_tokens': usage.get('input_tokens', 0),
+                        'output_tokens': usage.get('output_tokens', 0),
+                        'total_tokens': usage.get('total_tokens', 0),
+                        'cost_usd': float(cost) if cost else None
+                    }
+                    logger.info(f"GPT usage (with tools): {usage_data}")
+                
+                return {
+                    'content': final_response.content,
+                    'usage': usage_data
+                }
             
             # No tool calls, return direct response
-            return response.content
+            return {
+                'content': response.content,
+                'usage': usage_data
+            }
             
         except Exception as e:
             logger.error("Error generating response: %s", str(e))
-            return "I apologize, but I'm having trouble responding right now. Please try again in a moment."
+            return {
+                'content': "I apologize, but I'm having trouble responding right now. Please try again in a moment.",
+                'usage': None
+            }
     
     def _format_response(self, response: str, channel: str) -> str:
         """Format the response based on channel"""
@@ -404,7 +476,8 @@ class AgentService:
         bible_version: str = None,
         user_first_name: str = None,
         phone_number: str = None,
-        trace_id: str = None
+        trace_id: str = None,
+        message_uuid: str = None
     ) -> Dict[str, Any]:
         """
         Process a message and generate a response
@@ -419,9 +492,10 @@ class AgentService:
             user_first_name: Optional user's first name for personalization
             phone_number: Optional phone number (for SMS tracing)
             trace_id: Optional trace ID to group related LLM calls (generated if not provided)
+            message_uuid: Optional message UUID for cost tracking correlation
             
         Returns:
-            Dict with 'response' and metadata
+            Dict with 'response', 'usage' (token/cost data), and metadata
         """
         logger.info("Processing message for thread: %s, channel: %s", thread_id, channel)
         
@@ -438,15 +512,17 @@ class AgentService:
         # Check guardrails first
         needs_crisis, crisis_response, is_off_topic = self._check_guardrails(message)
         
+        usage_data = None
+        
         if needs_crisis:
             # Return crisis intervention response immediately
-            response = crisis_response
+            response_text = crisis_response
         else:
             # Add current message to history for context
             messages = history + [{"role": "user", "content": message}]
             
             # Generate LLM response
-            response = self._generate_llm_response(
+            result = self._generate_llm_response(
                 messages, 
                 channel, 
                 is_off_topic, 
@@ -455,11 +531,15 @@ class AgentService:
                 thread_id=thread_id,
                 phone_number=phone_number,
                 user_id=user_id,
-                trace_id=trace_id
+                trace_id=trace_id,
+                message_uuid=message_uuid
             )
             
+            response_text = result['content']
+            usage_data = result['usage']
+            
             # Format response
-            response = self._format_response(response, channel)
+            response_text = self._format_response(response_text, channel)
         
         # Flush PostHog events before returning (critical for Lambda)
         if self.posthog:
@@ -470,7 +550,8 @@ class AgentService:
                 logger.error(f"Error flushing PostHog: {str(e)}")
         
         return {
-            "response": response,
+            "response": response_text,
+            "usage": usage_data,  # Token usage and cost data
             "thread_id": thread_id,
             "channel": channel,
             "needs_crisis_intervention": needs_crisis,

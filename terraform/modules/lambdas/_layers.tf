@@ -123,12 +123,19 @@ resource "null_resource" "package_langchain_layer" {
       rm -rf python && \
       mkdir python && \
       pip install -r requirements.txt -t python --platform manylinux2014_x86_64 --only-binary=:all: --python-version 3.11 && \
+      cp ../../shared/*.py python/ && \
       zip -r layer.zip python
     EOT
   }
 
   triggers = {
     requirements = filemd5("${path.module}/../../../lambdas/layers/langchain/requirements.txt")
+    
+    # Trigger on ANY changes to shared directory (for cost_calculator, message_logger, etc.)
+    shared_files = md5(join("", [
+      for f in fileset("${path.module}/../../../lambdas/shared", "*.py") : 
+      filemd5("${path.module}/../../../lambdas/shared/${f}")
+    ]))
   }
 }
 
@@ -136,9 +143,15 @@ resource "aws_lambda_layer_version" "langchain_layer" {
   filename            = "${path.module}/../../../lambdas/layers/langchain/layer.zip"
   layer_name          = "${var.environment}-langchain-dependencies"
   compatible_runtimes = ["python3.11"]
-  description         = "LangChain dependencies: langchain, langgraph, openai"
+  description         = "LangChain dependencies: langchain, langgraph, openai, shared modules"
+  source_code_hash    = filebase64sha256("${path.module}/../../../lambdas/layers/langchain/layer.zip")
   
   depends_on = [null_resource.package_langchain_layer]
+  
+  # Lifecycle to ensure layer updates force Lambda updates
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 output "langchain_layer_arn" {

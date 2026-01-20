@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import logging
 from typing import Optional
 from datetime import datetime, timezone
@@ -11,6 +12,64 @@ import requests
 from botocore.exceptions import ClientError
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
+
+# Add shared modules to path for message logger
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
+try:
+    from message_logger import log_sms_message
+except ImportError:
+    # Fallback for Lambda layer
+    sys.path.append('/opt/python')
+    from message_logger import log_sms_message
+
+# For updating SID after message is sent
+def update_message_twilio_sid(message_id: str, twilio_sid: str, status: str):
+    """Update a logged message with its Twilio SID and SMS metadata"""
+    try:
+        dynamodb = boto3.resource('dynamodb')
+        env = os.environ.get('ENVIRONMENT', 'dev')
+        project_name = os.environ.get('PROJECT_NAME', 'versiful')
+        messages_table = dynamodb.Table(f'{env}-{project_name}-chat-messages')
+        
+        # Look up message by messageId using GSI
+        response = messages_table.query(
+            IndexName='MessageUuidIndex',
+            KeyConditionExpression='messageId = :mid',
+            ExpressionAttributeValues={':mid': message_id},
+            Limit=1
+        )
+        
+        if not response.get('Items'):
+            logger.warning(f"Message not found for UUID: {message_id}")
+            return False
+        
+        message = response['Items'][0]
+        thread_id = message['threadId']
+        timestamp = message['timestamp']
+        
+        # Update with Twilio SID and outbound metadata
+        messages_table.update_item(
+            Key={
+                'threadId': thread_id,
+                'timestamp': timestamp
+            },
+            UpdateExpression='SET metadata.twilioSid = :sid, metadata.#status = :status, metadata.#direction = :direction, metadata.messageType = :msgtype',
+            ExpressionAttributeNames={
+                '#status': 'status',
+                '#direction': 'direction'
+            },
+            ExpressionAttributeValues={
+                ':sid': twilio_sid,
+                ':status': status,
+                ':direction': 'outbound',
+                ':msgtype': 'chat'
+            }
+        )
+        logger.info(f"Updated message {message_id} with Twilio SID: {twilio_sid}")
+        return True
+    except Exception as e:
+        logger.error(f"Error updating Twilio SID: {str(e)}")
+        return False
 
 # Setup logging
 logger = logging.getLogger()
@@ -167,25 +226,56 @@ def get_twilio_secrets():
     return json.loads(secret)
 
 
-def send_message(to_num, message):
+def send_message(to_num, message, assistant_message_id=None):
     """
     Send SMS via Twilio with carrier block detection
+    
+    If assistant_message_id is provided, updates existing message with Twilio SID.
+    Otherwise, creates a new message record (for system messages, errors, etc.)
     
     If user has unsubscribed via carrier (texted STOP to carrier),
     Twilio returns error 21610. We detect this and mark user as opted out.
     """
     try:
+        # If we have an assistant_message_id, we're sending a response to a chat message
+        # The message was already logged by chat_handler with GPT costs
+        # We just need to update it with Twilio metadata
+        if assistant_message_id:
+            message_id = assistant_message_id
+            logger.info(f"Updating existing assistant message {message_id} with Twilio metadata")
+        else:
+            # Create new message record (for system messages, welcome messages, etc.)
+            message_id = log_sms_message(
+                thread_id=to_num,
+                direction='outbound',
+                from_number=VERSIFUL_PHONE,
+                to_number=to_num,
+                body=message,
+                twilio_sid=None,  # SID not yet known, will be updated
+                user_id=None,  # Not available in helpers context
+                message_type='chat'
+            )
+        
         twilio_auth = get_twilio_secrets()
         account_sid = twilio_auth["twilio_account_sid"]
         auth_token = twilio_auth["twilio_auth"]
 
         client = Client(account_sid, auth_token)
+        
+        # Add status callback URL with message_uuid for cost tracking
+        status_callback_url = f"https://api.{ENVIRONMENT}.versiful.io/sms/callback?message_uuid={message_id}"
 
         twilio_message = client.messages.create(
             from_=VERSIFUL_PHONE, 
             body=f"{message}", 
-            to=f"{to_num}"
+            to=f"{to_num}",
+            status_callback=status_callback_url
         )
+        
+        # Update the message with the Twilio SID and metadata
+        update_message_twilio_sid(message_id, twilio_message.sid, twilio_message.status)
+        
+        logger.info(f"Sent outbound SMS: {message_id} (SID: {twilio_message.sid})")
 
         return twilio_message.sid
         

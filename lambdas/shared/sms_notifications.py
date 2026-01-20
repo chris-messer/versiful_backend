@@ -3,18 +3,18 @@ SMS Notification Helper
 Provides functions to send lifecycle SMS notifications to users
 """
 import os
-import json
 import logging
-from twilio.rest import Client
 
 logger = logging.getLogger()
 
-# Import secrets helper
+# Import SMS operations (unified module)
 try:
-    from secrets_helper import get_secret, get_secrets
+    from sms_operations import send_sms as send_sms_operation
 except ImportError:
-    # Fallback for local testing
-    from lambdas.shared.secrets_helper import get_secret, get_secrets
+    # Fallback for different import contexts
+    import sys
+    sys.path.append(os.path.dirname(__file__))
+    from sms_operations import send_sms as send_sms_operation
 
 
 VERSIFUL_PHONE = os.environ.get("VERSIFUL_PHONE", "+18336811158")
@@ -33,52 +33,7 @@ def get_vcard_url(environment=None):
         return f"https://{environment}.{VERSIFUL_DOMAIN}/versiful-contact.vcf"
 
 
-def get_twilio_client():
-    """Initialize and return Twilio client"""
-    secrets = get_secrets()
-    account_sid = secrets.get("twilio_account_sid")
-    auth_token = secrets.get("twilio_auth")
-    
-    if not account_sid or not auth_token:
-        raise ValueError("Twilio credentials not found in secrets")
-    
-    return Client(account_sid, auth_token)
-
-
-def send_sms(phone_number: str, message: str, media_url: str = None):
-    """
-    Send an SMS/MMS message to a phone number
-    
-    Args:
-        phone_number: E.164 formatted phone number (e.g. +1##########)
-        message: Message body
-        media_url: Optional media URL (for MMS with vCard or images)
-    
-    Returns:
-        message_sid on success, None on failure
-    """
-    try:
-        client = get_twilio_client()
-        
-        kwargs = {
-            "from_": VERSIFUL_PHONE,
-            "body": message,
-            "to": phone_number
-        }
-        
-        if media_url:
-            kwargs["media_url"] = [media_url]
-        
-        twilio_message = client.messages.create(**kwargs)
-        logger.info(f"SMS sent to {phone_number}: {twilio_message.sid}")
-        return twilio_message.sid
-        
-    except Exception as e:
-        logger.error(f"Failed to send SMS to {phone_number}: {str(e)}")
-        return None
-
-
-def send_welcome_sms(phone_number: str, first_name: str = None):
+def send_welcome_sms(phone_number: str, first_name: str = None, user_id: str = None):
     """
     Send welcome message when user first registers their phone number
     Includes information about free tier, link to subscribe, and vCard to save contact
@@ -86,6 +41,7 @@ def send_welcome_sms(phone_number: str, first_name: str = None):
     Args:
         phone_number: E.164 formatted phone number
         first_name: Optional first name to personalize the message
+        user_id: Optional user ID for tracking
     """
     # Personalize greeting if we have a first name
     greeting = f"Welcome to Versiful, {first_name}! 🙏" if first_name else "Welcome to Versiful! 🙏"
@@ -101,10 +57,17 @@ def send_welcome_sms(phone_number: str, first_name: str = None):
     vcard_url = get_vcard_url()
     
     logger.info(f"Sending welcome SMS with vCard to {phone_number}")
-    return send_sms(phone_number, message, media_url=vcard_url)
+    message_id, twilio_sid = send_sms_operation(
+        to_number=phone_number,
+        message=message,
+        user_id=user_id,
+        message_type='welcome',
+        media_url=vcard_url
+    )
+    return twilio_sid
 
 
-def send_subscription_confirmation_sms(phone_number: str):
+def send_subscription_confirmation_sms(phone_number: str, user_id: str = None):
     """
     Send confirmation message when user subscribes to paid plan
     """
@@ -115,10 +78,16 @@ def send_subscription_confirmation_sms(phone_number: str):
     )
     
     logger.info(f"Sending subscription confirmation SMS to {phone_number}")
-    return send_sms(phone_number, message)
+    message_id, twilio_sid = send_sms_operation(
+        to_number=phone_number,
+        message=message,
+        user_id=user_id,
+        message_type='subscription'
+    )
+    return twilio_sid
 
 
-def send_cancellation_sms(phone_number: str):
+def send_cancellation_sms(phone_number: str, user_id: str = None):
     """
     Send message when user cancels their subscription
     Informs them they've been moved back to free tier
@@ -131,7 +100,13 @@ def send_cancellation_sms(phone_number: str):
     )
     
     logger.info(f"Sending cancellation SMS to {phone_number}")
-    return send_sms(phone_number, message)
+    message_id, twilio_sid = send_sms_operation(
+        to_number=phone_number,
+        message=message,
+        user_id=user_id,
+        message_type='cancellation'
+    )
+    return twilio_sid
 
 
 def send_first_time_texter_welcome_sms(phone_number: str):
@@ -150,5 +125,10 @@ def send_first_time_texter_welcome_sms(phone_number: str):
     )
     
     logger.info(f"Sending first-time texter welcome SMS to {phone_number}")
-    return send_sms(phone_number, message)
+    message_id, twilio_sid = send_sms_operation(
+        to_number=phone_number,
+        message=message,
+        message_type='welcome'
+    )
+    return twilio_sid
 

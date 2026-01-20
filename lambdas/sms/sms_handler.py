@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 
 try:
     from helpers import (
-        send_message,
         parse_url_string,
         get_sms_usage,
         consume_message_if_allowed,
@@ -19,10 +18,10 @@ try:
         NUDGE_LIMIT,
         normalize_phone_number,
         sms_usage_table,
+        VERSIFUL_PHONE,
     )
 except ImportError:
     from lambdas.sms.helpers import (
-        send_message,
         parse_url_string,
         get_sms_usage,
         consume_message_if_allowed,
@@ -33,15 +32,18 @@ except ImportError:
         NUDGE_LIMIT,
         normalize_phone_number,
         sms_usage_table,
+        VERSIFUL_PHONE,
     )
 
-# Import secrets helper and SMS notifications
+# Import secrets helper and SMS operations
 try:
     from secrets_helper import get_secret
     from sms_notifications import send_cancellation_sms, send_first_time_texter_welcome_sms
+    from sms_operations import receive_sms, send_sms
 except ImportError:
     from lambdas.shared.secrets_helper import get_secret
     from lambdas.shared.sms_notifications import send_cancellation_sms, send_first_time_texter_welcome_sms
+    from lambdas.shared.sms_operations import receive_sms, send_sms
 
 import boto3
 from boto3.dynamodb.conditions import Attr
@@ -439,6 +441,7 @@ def handler(event, context):
     body = params.get("Body", None)
     from_num = params.get("From", None)
     from_num_normalized = normalize_phone_number(from_num)
+    message_sid = params.get("MessageSid", "unknown")  # Get Twilio SID
 
     logger.info("Message body retrieved: %s", body)
 
@@ -502,13 +505,28 @@ def handler(event, context):
             limit = decision["limit"] or FREE_MONTHLY_LIMIT
             if _should_nudge(decision["usage"]):
                 increment_nudge(from_num_normalized)
-                send_message(from_num_normalized, _free_credits_exhausted_message(period_key, limit))
+                send_sms(from_num_normalized, _free_credits_exhausted_message(period_key, limit), message_type='notification')
             else:
                 logger.info("Nudge limit reached for %s", from_num_normalized)
             return _success_response()
 
         # Get user_id if available
         user_id = decision.get("user_profile", {}).get("userId") if decision.get("user_profile") else None
+        
+        # Log inbound SMS message using unified sms_operations
+        try:
+            inbound_message_id = receive_sms(
+                from_number=from_num_normalized,
+                to_number=VERSIFUL_PHONE,
+                body=body,
+                twilio_sid=message_sid,
+                num_segments=int(params.get('NumSegments', '1')),
+                user_id=user_id
+            )
+            logger.info(f"Logged inbound SMS: {inbound_message_id}")
+        except Exception as log_error:
+            logger.error(f"Failed to log inbound SMS: {str(log_error)}")
+            # Continue processing even if logging fails
 
         # Invoke chat handler with phone number as thread_id
         logger.info("Invoking chat handler for SMS")
@@ -522,10 +540,11 @@ def handler(event, context):
         if not chat_result.get('success', False):
             error_msg = chat_result.get('error', 'Unknown error')
             logger.error("Chat handler error: %s", error_msg)
-            # Send a user-friendly error message
-            send_message(
-                from_num_normalized,
-                "I apologize, but I encountered an error processing your message. Please try again in a moment."
+            # Send a user-friendly error message using unified send_sms
+            send_sms(
+                to_number=from_num_normalized,
+                message="I apologize, but I encountered an error processing your message. Please try again in a moment.",
+                message_type='error'
             )
             return {
                 "statusCode": 500,
@@ -538,9 +557,16 @@ def handler(event, context):
             }
 
         gpt_response = chat_result.get('response', '')
+        assistant_message_id = chat_result.get('assistant_message_id')  # Get message UUID from chat_handler
 
         logger.info("Sending Message...")
-        send_message(from_num_normalized, gpt_response)
+        send_sms(
+            to_number=from_num_normalized,
+            message=gpt_response,
+            message_id=assistant_message_id,  # Update existing message with Twilio metadata
+            user_id=user_id,
+            message_type='chat'
+        )
 
         return _success_response()
 

@@ -193,15 +193,27 @@ resource "null_resource" "package_layer" {
   }
 
   triggers = {
-    requirements   = filemd5("${path.module}/../../../lambdas/layer/requirements.txt")
-    shared_secrets = filemd5("${path.module}/../../../lambdas/shared/secrets_helper.py")
-    shared_sms     = filemd5("${path.module}/../../../lambdas/shared/sms_notifications.py")
+    # Trigger on requirements.txt changes
+    requirements = filemd5("${path.module}/../../../lambdas/layer/requirements.txt")
+    
+    # Trigger on ANY changes to shared directory by hashing all .py files together
+    shared_files = md5(join("", [
+      for f in fileset("${path.module}/../../../lambdas/shared", "*.py") : 
+      filemd5("${path.module}/../../../lambdas/shared/${f}")
+    ]))
   }
 }
+
 resource "aws_lambda_layer_version" "shared_dependencies" {
   filename         = "${path.module}/../../../lambdas/layer/layer.zip"
   layer_name       = "shared_dependencies"
   compatible_runtimes = ["python3.11", "python3.9"]
   source_code_hash = filebase64sha256("${path.module}/../../../lambdas/layer/layer.zip")
   depends_on = [null_resource.package_layer]
+  description = "Shared dependencies including cost_calculator, message_logger, and sms_operations"
+  
+  # Lifecycle to ensure layer updates force Lambda updates
+  lifecycle {
+    create_before_destroy = true
+  }
 }

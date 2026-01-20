@@ -116,7 +116,8 @@ def save_message(
     channel: str,
     user_id: str = None,
     phone_number: str = None,
-    metadata: Dict[str, Any] = None
+    metadata: Dict[str, Any] = None,
+    costs: Dict[str, Any] = None
 ) -> Dict[str, Any]:
     """
     Save a message to DynamoDB
@@ -129,6 +130,7 @@ def save_message(
         user_id: Optional user ID
         phone_number: Optional phone number (for SMS)
         metadata: Optional metadata dict
+        costs: Optional costs dict with 'gpt' and/or 'twilio' fields
         
     Returns:
         Saved message dict
@@ -153,10 +155,32 @@ def save_message(
         message['phoneNumber'] = phone_number
     if metadata:
         message['metadata'] = metadata
+    if costs:
+        # Convert to Decimal for DynamoDB
+        if 'gpt' in costs and costs['gpt']:
+            gpt_costs = costs['gpt'].copy()
+            if 'cost_usd' in gpt_costs and gpt_costs['cost_usd'] is not None:
+                gpt_costs['costUsd'] = Decimal(str(gpt_costs['cost_usd']))
+                del gpt_costs['cost_usd']
+            gpt_costs['timestamp'] = timestamp
+            
+            if 'costs' not in message:
+                message['costs'] = {}
+            message['costs']['gpt'] = gpt_costs
+            
+        if 'twilio' in costs and costs['twilio']:
+            twilio_costs = costs['twilio'].copy()
+            if 'price' in twilio_costs and twilio_costs['price'] is not None:
+                twilio_costs['price'] = Decimal(str(twilio_costs['price']))
+            twilio_costs['timestamp'] = timestamp
+            
+            if 'costs' not in message:
+                message['costs'] = {}
+            message['costs']['twilio'] = twilio_costs
     
     try:
         messages_table.put_item(Item=message)
-        logger.info("Saved %s message to thread: %s", role, thread_id)
+        logger.info("Saved %s message to thread: %s (messageId: %s)", role, thread_id, message['messageId'])
         return message
     except ClientError as e:
         logger.error("Error saving message: %s", str(e))
@@ -278,6 +302,10 @@ def process_chat_message(
         
         # Get agent and process
         agent = get_agent()
+        
+        # Generate messageId upfront so we can pass it to agent for PostHog correlation
+        user_message_id = str(uuid.uuid4())
+        
         result = agent.process_message(
             thread_id=thread_id,
             message=message,
@@ -286,30 +314,42 @@ def process_chat_message(
             user_id=user_id,
             bible_version=bible_version,
             user_first_name=first_name,
-            phone_number=phone_number
+            phone_number=phone_number,
+            message_uuid=user_message_id  # Pass for PostHog correlation
         )
         
         assistant_response = result.get('response', '')
         trace_id = result.get('trace_id')  # Get trace_id from agent result
+        usage_data = result.get('usage')  # Get token usage and cost data
         
-        # Save user message
-        save_message(
-            thread_id=thread_id,
-            role='user',
-            content=message,
-            channel=channel,
-            user_id=user_id,
-            phone_number=phone_number
-        )
+        # Save user message only for non-SMS channels
+        # For SMS, the message is already logged by message_logger in sms_handler
+        if channel != 'sms':
+            save_message(
+                thread_id=thread_id,
+                role='user',
+                content=message,
+                channel=channel,
+                user_id=user_id,
+                phone_number=phone_number,
+                metadata={'messageId': user_message_id}
+            )
         
-        # Save assistant response
-        save_message(
+        # Prepare costs dict for assistant message if usage data available
+        costs = None
+        if usage_data:
+            costs = {'gpt': usage_data}
+            logger.info(f"Assistant message costs: {costs}")
+        
+        # Save assistant response with costs
+        assistant_msg = save_message(
             thread_id=thread_id,
             role='assistant',
             content=assistant_response,
             channel=channel,
             user_id=user_id,
-            metadata={'model': 'gpt-4o'}  # Could get from config
+            metadata={'model': usage_data.get('model') if usage_data else 'gpt-4o'},
+            costs=costs  # Include GPT costs
         )
         
         # Update session metadata if web channel
@@ -318,7 +358,6 @@ def process_chat_message(
             history_length = len(history)
             if history_length == 0 or (history_length > 0 and history_length % 5 == 0):
                 # Generate NEW trace_id for title generation (should not share with message trace)
-                import uuid
                 title_trace_id = str(uuid.uuid4())
                 
                 # For first message, use just that message. For updates, use recent history
@@ -339,7 +378,8 @@ def process_chat_message(
             'response': assistant_response,
             'thread_id': thread_id,
             'channel': channel,
-            'needs_crisis_intervention': result.get('needs_crisis_intervention', False)
+            'needs_crisis_intervention': result.get('needs_crisis_intervention', False),
+            'assistant_message_id': assistant_msg.get('messageId')  # Return message UUID for SMS tracking
         }
         
     except Exception as e:

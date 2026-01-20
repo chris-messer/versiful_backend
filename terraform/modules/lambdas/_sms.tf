@@ -52,6 +52,7 @@ resource "aws_lambda_function" "sms_function" {
       CHAT_FUNCTION_NAME= "${var.environment}-${var.project_name}-chat"
       SECRET_ARN        = var.secret_arn
       VERSIFUL_PHONE    = var.versiful_phone
+      POSTHOG_API_KEY   = var.posthog_apikey
     }
 
   }
@@ -85,4 +86,76 @@ resource "aws_apigatewayv2_route" "lambda_route" {
   api_id    = var.apiGateway_lambda_api_id
   route_key = "ANY /sms"
   target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+}
+
+# --- Twilio Status Callback Handler ---
+
+# Package the Twilio Callback Lambda function
+data "archive_file" "twilio_callback_zip" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../../lambdas/sms"
+  output_path = "${path.module}/../../../lambdas/sms/twilio_callback.zip"
+  excludes = [
+    "__pycache__",
+    "*.pyc",
+    "*.zip",
+    ".pytest_cache",
+    "*.egg-info",
+    "sms_handler.py",  # Exclude main SMS handler
+    "helpers.py"       # Exclude helpers (not needed for callback)
+  ]
+}
+
+# Deploy Twilio Callback Lambda function
+resource "aws_lambda_function" "twilio_callback_function" {
+  function_name    = "${var.environment}-twilio_callback_function"
+  handler          = "twilio_callback_handler.handler"
+  runtime          = "python3.11"
+  role             = aws_iam_role.lambda_exec_role.arn
+  filename         = data.archive_file.twilio_callback_zip.output_path
+  source_code_hash = data.archive_file.twilio_callback_zip.output_base64sha256
+  layers = [
+    aws_lambda_layer_version.core_layer.arn,
+    aws_lambda_layer_version.shared_dependencies.arn
+  ]
+  timeout = 10
+
+  environment {
+    variables = {
+      ENVIRONMENT          = var.environment
+      PROJECT_NAME         = var.project_name
+      CHAT_MESSAGES_TABLE  = "${var.environment}-${var.project_name}-chat-messages"
+      POSTHOG_API_KEY      = var.posthog_apikey
+    }
+  }
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
+# Lambda Permission for Twilio Callback
+resource "aws_lambda_permission" "twilio_callback_permission" {
+  statement_id  = "AllowAPIGatewayInvokeTwilioCallback"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.twilio_callback_function.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${var.apiGateway_execution_arn}/*/*"
+  lifecycle {
+    replace_triggered_by = [aws_lambda_function.twilio_callback_function.id]
+  }
+}
+
+# Integrate Twilio Callback Lambda with API Gateway
+resource "aws_apigatewayv2_integration" "twilio_callback_integration" {
+  api_id           = var.apiGateway_lambda_api_id
+  integration_type = "AWS_PROXY"
+  integration_uri  = aws_lambda_function.twilio_callback_function.invoke_arn
+}
+
+# Define API Gateway Route for Twilio Callback (POST only, public)
+resource "aws_apigatewayv2_route" "twilio_callback_route" {
+  api_id    = var.apiGateway_lambda_api_id
+  route_key = "POST /sms/callback"
+  target    = "integrations/${aws_apigatewayv2_integration.twilio_callback_integration.id}"
 }
