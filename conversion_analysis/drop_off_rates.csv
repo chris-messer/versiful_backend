@@ -1,0 +1,5 @@
+Transition,Lost Users,Drop-off Rate
+Sign In → Welcome,37,94.87179487179486
+Landing → Sign In,377,90.625
+Welcome → Subscription,1,50.0
+Subscription → Settings,-8,-800.0

@@ -67,3 +67,8 @@ DEPLOYMENT_SUMMARY.md
 terraform/modules/s3/config.json
 terraform/modules/s3/versiful-contact.vcf
 terraform/state-backup-*.json
+
+# Conversion Analysis - Exclude raw data
+conversion_analysis/results/*.csv
+conversion_analysis/results/*.png
+posthog-analytics.csv

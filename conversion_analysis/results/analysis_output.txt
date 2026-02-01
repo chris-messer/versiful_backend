@@ -1,0 +1,179 @@
+================================================================================
+                    VERSIFUL CONVERSION ANALYSIS
+================================================================================
+
+1. LOADING DATA...
+✅ Loaded 3,281 events
+📅 Date range: 2026-01-13 19:50:05.744000+00:00 to 2026-02-01 02:57:41.280000+00:00
+
+🎯 Event types:
+event
+$autocapture          789
+$pageview             704
+$web_vitals           444
+$ai_span              404
+$pageleave            380
+$ai_generation        234
+$ai_trace             178
+$set                   28
+llm_call_end           26
+llm_call_start         26
+trace_complete         26
+$identify              20
+$create_alias          17
+$rageclick              3
+$merge_dangerously      2
+Name: count, dtype: int64
+
+2. PREPROCESSING...
+✅ Data preprocessed
+🌍 Environments: {'prod': 2237, 'dev': 521, 'unknown': 471, 'staging': 52}
+
+3. FILTERING TO PRODUCTION DATA...
+✅ Production events: 2,237 (68.2% of total)
+👥 Unique users: 492
+📅 Production date range: 2026-01-13 19:50:05.744000+00:00 to 2026-01-31 14:36:42.073000+00:00
+
+4. PAGE VIEW ANALYSIS...
+📄 Total Pageviews: 682
+👥 Unique visitors: 424
+✅ Saved: page_views_analysis.png
+
+📊 Top Pages:
+                  Total Views  Unique Visitors  Avg Views/User
+clean_path                                                    
+/                         533              416            1.28
+/callback                  28               18            1.56
+/chat                       2                1            2.00
+/features                  10                4            2.50
+/getting-started            6                5            1.20
+/robots.txt                 1                1            1.00
+/settings                  20                9            2.22
+/signin                    79               39            2.03
+/subscription               1                1            1.00
+/welcome                    2                2            1.00
+
+5. TIME ON PAGE ANALYSIS...
+⏱️  Calculated time on page for 218 pageviews
+
+⏱️  Time on Page by Page:
+                  Avg Time (sec)  Median Time (sec)  Sample Size
+page                                                            
+/features                  338.8               19.7            8
+/getting-started           177.4              177.4            2
+/settings                  126.7               22.6           12
+/                           84.3                9.2          140
+/subscription               67.4               67.4            1
+/signin                     44.3                4.2           54
+/robots.txt                 15.1               15.1            1
+✅ Saved: time_on_page_analysis.png
+✅ Saved: time_on_page_by_page.csv
+
+6. CONVERSION FUNNEL ANALYSIS...
+
+🔍 CONVERSION FUNNEL ANALYSIS
+======================================================================
+        Step  Users  Drop-off  Overall %     Step %
+     Landing    416         0 100.000000 100.000000
+     Sign In     39       377   9.375000   9.375000
+     Welcome      2        37   0.480769   5.128205
+Subscription      1         1   0.240385  50.000000
+    Settings      9        -8   2.163462 900.000000
+======================================================================
+
+💡 Overall Conversion Rate: 2.16%
+   (9 conversions from 416 landing page visitors)
+✅ Saved: conversion_funnel.png
+✅ Saved: conversion_funnel.csv
+
+7. DROP-OFF ANALYSIS...
+
+🚨 CRITICAL DROP-OFF POINTS
+============================================================
+             Transition  Lost Users  Drop-off Rate
+      Sign In → Welcome          37      94.871795
+      Landing → Sign In         377      90.625000
+ Welcome → Subscription           1      50.000000
+Subscription → Settings          -8    -800.000000
+============================================================
+✅ Saved: drop_off_analysis.png
+✅ Saved: drop_off_rates.csv
+
+8. USER BEHAVIOR PATTERNS...
+✅ Saved: traffic_patterns.png
+
+📊 Peak traffic day: Monday (577 events)
+📊 Peak traffic hour: 16:00 (259 events)
+✅ Saved: device_browser_analysis.png
+
+📱 Device distribution:
+device_type
+Mobile     1496
+Desktop     734
+Tablet        7
+Name: count, dtype: int64
+
+🌐 Top browsers:
+browser
+Chrome             1129
+Mobile Safari       692
+Facebook Mobile     248
+Safari              102
+Chrome iOS           32
+Name: count, dtype: int64
+
+================================================================================
+                         KEY INSIGHTS & RECOMMENDATIONS
+================================================================================
+
+🔴 CRITICAL #1: Landing Page → Sign In
+--------------------------------------------------------------------------------
+Issue: Only 9.4% of visitors click Get Started
+Impact: HIGH - First impression matters most
+
+Recommended Solutions:
+  • Make CTA buttons 2x larger and more prominent
+  • Add urgency: "Start your free trial today"
+  • Place CTA above the fold on mobile
+  • Add social proof (testimonials, user count)
+  • Simplify value proposition messaging
+
+🟡 IMPORTANT #2: Mobile Experience
+--------------------------------------------------------------------------------
+Issue: 67% of traffic is mobile
+Impact: MEDIUM - Large user segment
+
+Recommended Solutions:
+  • Optimize mobile checkout flow
+  • Make CTAs thumb-friendly (larger tap targets)
+  • Reduce form fields on mobile
+  • Test mobile-specific landing page
+
+🟢 QUICK WIN #3: Immediate Improvements
+--------------------------------------------------------------------------------
+Issue: Low-hanging fruit for conversion boost
+Impact: LOW EFFORT, HIGH RETURN
+
+Recommended Solutions:
+  • Add live chat support widget
+  • Include phone number prominently
+  • Add trust badges (SSL, payment security)
+  • Show limited-time offer banner
+  • Add progress indicator in signup flow
+
+================================================================================
+                              ANALYSIS COMPLETE
+================================================================================
+
+📁 Generated Files:
+   • page_views_analysis.png
+   • time_on_page_analysis.png
+   • conversion_funnel.png
+   • drop_off_analysis.png
+   • traffic_patterns.png
+   • device_browser_analysis.png
+   • conversion_funnel.csv
+   • drop_off_rates.csv
+   • time_on_page_by_page.csv
+
+✅ Run complete!
