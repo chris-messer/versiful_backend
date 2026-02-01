@@ -13,7 +13,7 @@ from decimal import Decimal
 import boto3
 from botocore.exceptions import ClientError
 
-from chat_handler import get_message_history, get_agent
+from chat_handler import get_message_history, get_agent, get_user_info
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -376,6 +376,24 @@ def handle_post_message(event: Dict[str, Any], user_id: str) -> Dict[str, Any]:
     
     if not message:
         return error_response('message is required', 400)
+    
+    # Check subscription status and enforce free trial limits
+    user_info = get_user_info(user_id)
+    is_subscribed = user_info.get('is_subscribed', False)
+    
+    # For non-subscribed users, check message limit (3 messages per thread)
+    if not is_subscribed and session_id:
+        session = get_session(user_id, session_id)
+        if session:
+            thread_id = session['threadId']
+            history = get_message_history(thread_id, limit=100)
+            # Count user messages only
+            user_message_count = sum(1 for msg in history if msg.get('role') == 'user')
+            
+            # Free trial limit: 3 user messages per thread
+            if user_message_count >= 3:
+                logger.warning("Free trial limit reached for user %s in session %s", user_id, session_id)
+                return error_response('Free trial limit reached. Please subscribe to continue chatting.', 403)
     
     # Create new session if not provided
     is_new_session = False
