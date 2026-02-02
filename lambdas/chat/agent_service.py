@@ -225,14 +225,9 @@ class AgentService:
         else:
             session_id = thread_id
         
-        # Determine distinct_id based on available information
-        if user_id:
-            distinct_id = user_id
-        elif phone_number:
-            # For SMS without user_id, use stripped phone as distinct_id
-            distinct_id = re.sub(r'\D', '', phone_number)
-        else:
-            distinct_id = session_id
+        # Let PostHog use its default anonymous distinct_id
+        # No custom identification - PostHog will handle it automatically
+        distinct_id = None
         
         try:
             # Follow official PostHog LangChain docs pattern - EXACT from working test
