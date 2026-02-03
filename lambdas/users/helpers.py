@@ -130,10 +130,43 @@ def link_sms_history_to_user(phone_number: str, user_id: str):
             
             logger.info(f"Successfully linked SMS history to user {user_id}")
             
-            # Flush to ensure alias is sent before Lambda terminates
+            # CRITICAL: After aliasing, the anonymous_id becomes the persistent distinct_id
+            # We need to identify this distinct_id with the user's DynamoDB userId as a property
+            # so we can link PostHog data back to DynamoDB
+            try:
+                # Get full user profile to set all person properties
+                user_response = table.get_item(Key={'userId': user_id})
+                user_profile = user_response.get('Item', {})
+                
+                person_properties = {
+                    'user_id': user_id,  # CRITICAL: Store DynamoDB userId as property
+                    'email': user_profile.get('email'),
+                    'phone_number': phone_number,
+                    'first_name': user_profile.get('firstName'),
+                    'last_name': user_profile.get('lastName'),
+                    'plan': user_profile.get('plan', 'free'),
+                    'is_subscribed': user_profile.get('isSubscribed', False),
+                    'bible_version': user_profile.get('bibleVersion'),
+                    'registration_status': 'registered',
+                    'channel': 'sms'
+                }
+                
+                # Identify with the anonymous_id (which is now the merged distinct_id)
+                # This sets person properties on the merged profile
+                posthog.identify(
+                    distinct_id=anonymous_id,
+                    properties=person_properties
+                )
+                
+                logger.info(f"Set person properties on {anonymous_id} with userId: {user_id}")
+            except Exception as e:
+                logger.error(f"Failed to set person properties after alias: {str(e)}")
+            
+            # Flush to ensure all events are sent before Lambda terminates
             posthog.flush()
         else:
             logger.info(f"No SMS history to link for {phone_number} (no posthogAnonymousId)")
+
             
     except Exception as e:
         logger.error(f"Failed to link SMS history: {str(e)}")
