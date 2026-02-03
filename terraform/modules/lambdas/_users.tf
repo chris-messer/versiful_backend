@@ -47,6 +47,7 @@ resource "aws_lambda_function" "users_function" {
       USERS_TABLE     = "${var.environment}-${var.project_name}-users"
       SECRET_ARN      = var.secret_arn
       VERSIFUL_PHONE  = var.versiful_phone
+      POSTHOG_API_KEY = var.posthog_apikey
     }
 
   }

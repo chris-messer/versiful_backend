@@ -2,12 +2,17 @@ import json
 import os
 import re
 import sys
+import logging
 from typing import Optional
 from datetime import datetime, timezone
 from decimal import Decimal
 
 import boto3
 from boto3.dynamodb.conditions import Attr
+from posthog import Posthog
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 # Add Lambda layer path for shared code
 sys.path.append('/opt/python')
@@ -71,6 +76,67 @@ def ensure_sms_usage_record(phone_number: str, user_id: str):
             ":now": now,
         },
     )
+    
+    # Link any SMS history to this user
+    link_sms_history_to_user(phone_number, user_id)
+
+
+def link_sms_history_to_user(phone_number: str, user_id: str):
+    """
+    Link any previous SMS activity to a newly registered user.
+    
+    Called when:
+    - User adds phone number to their account
+    - User registers with a phone that was previously used
+    
+    This uses PostHog's alias() to merge anonymous SMS events into the user's profile.
+    
+    Args:
+        phone_number: Full phone number (e.g., "+15551234567")
+        user_id: DynamoDB userId (the Cognito user ID)
+    """
+    try:
+        # Initialize PostHog client
+        posthog_api_key = os.environ.get('POSTHOG_API_KEY')
+        if not posthog_api_key:
+            logger.warning("POSTHOG_API_KEY not set, skipping SMS history linking")
+            return
+        
+        posthog = Posthog(
+            posthog_api_key,
+            host='https://us.i.posthog.com'
+        )
+        
+        # Look up the anonymous PostHog ID we stored
+        try:
+            response = sms_usage_table.get_item(Key={'phoneNumber': phone_number})
+            usage = response.get('Item')
+        except Exception as e:
+            logger.error(f"Error fetching sms-usage record: {str(e)}")
+            return
+        
+        if usage and usage.get('posthogAnonymousId'):
+            anonymous_id = usage['posthogAnonymousId']
+            
+            logger.info(f"Linking SMS history: {anonymous_id} → {user_id}")
+            
+            # Alias anonymous SMS events to user account
+            # This merges all events from anonymous_id into the user's profile
+            posthog.alias(
+                distinct_id=user_id,
+                alias=anonymous_id
+            )
+            
+            logger.info(f"Successfully linked SMS history to user {user_id}")
+            
+            # Flush to ensure alias is sent before Lambda terminates
+            posthog.flush()
+        else:
+            logger.info(f"No SMS history to link for {phone_number} (no posthogAnonymousId)")
+            
+    except Exception as e:
+        logger.error(f"Failed to link SMS history: {str(e)}")
+        # Don't fail the request if PostHog linking fails
 
 
 def create_user(event, headers):

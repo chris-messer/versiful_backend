@@ -194,16 +194,18 @@ class AgentService:
         channel: str,
         phone_number: str = None,
         user_id: str = None,
+        posthog_distinct_id: str = None,
         trace_id: str = None
     ) -> Optional[CallbackHandler]:
         """
-        Create a PostHog CallbackHandler following official docs pattern
+        Create a PostHog CallbackHandler with proper user identification
         
         Args:
             thread_id: Thread identifier (used as session_id to group conversation)
             channel: "sms" or "web"
             phone_number: Phone number for SMS (used as session_id)
             user_id: User ID for web (used in distinct_id)
+            posthog_distinct_id: Pre-computed distinct_id (priority over user_id)
             trace_id: Trace ID to group related LLM calls for handling one message
             
         Returns:
@@ -225,9 +227,14 @@ class AgentService:
         else:
             session_id = thread_id
         
-        # Let PostHog use its default anonymous distinct_id
-        # No custom identification - PostHog will handle it automatically
-        distinct_id = None
+        # Use provided distinct_id (computed in sms_handler) or fall back to user_id
+        if posthog_distinct_id:
+            distinct_id = posthog_distinct_id
+        elif user_id:
+            distinct_id = user_id
+        else:
+            # For web anonymous users, let PostHog auto-generate
+            distinct_id = None
         
         try:
             # Follow official PostHog LangChain docs pattern - EXACT from working test
@@ -261,6 +268,7 @@ class AgentService:
         thread_id: str = None,
         phone_number: str = None,
         user_id: str = None,
+        posthog_distinct_id: str = None,
         trace_id: str = None
     ) -> str:
         """Generate response using LLM with tool calling support and PostHog tracing"""
@@ -308,6 +316,7 @@ class AgentService:
             channel=channel,
             phone_number=phone_number,
             user_id=user_id,
+            posthog_distinct_id=posthog_distinct_id,
             trace_id=trace_id
         )
         
@@ -399,6 +408,7 @@ class AgentService:
         bible_version: str = None,
         user_first_name: str = None,
         phone_number: str = None,
+        posthog_distinct_id: str = None,
         trace_id: str = None
     ) -> Dict[str, Any]:
         """
@@ -413,6 +423,7 @@ class AgentService:
             bible_version: Optional preferred Bible version (e.g., 'KJV', 'NIV')
             user_first_name: Optional user's first name for personalization
             phone_number: Optional phone number (for SMS tracing)
+            posthog_distinct_id: Optional PostHog distinct_id for event tracking
             trace_id: Optional trace ID to group related LLM calls (generated if not provided)
             
         Returns:
@@ -450,6 +461,7 @@ class AgentService:
                 thread_id=thread_id,
                 phone_number=phone_number,
                 user_id=user_id,
+                posthog_distinct_id=posthog_distinct_id,
                 trace_id=trace_id
             )
             

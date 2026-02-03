@@ -3,8 +3,11 @@ import json
 import logging
 import sys
 import os
+import re
 import stripe
+from uuid import uuid4
 from datetime import datetime, timezone
+from posthog import Posthog
 
 try:
     from helpers import (
@@ -78,6 +81,17 @@ SUBSCRIPTION_INACTIVE_MESSAGE = (
     "Your Versiful subscription is inactive. Please visit https://versiful.io to renew "
     "and continue receiving guidance."
 )
+
+# Initialize PostHog for user identification
+try:
+    posthog = Posthog(
+        os.environ.get('POSTHOG_API_KEY'),
+        host='https://us.i.posthog.com'
+    )
+    logger.info("PostHog initialized successfully in sms_handler")
+except Exception as e:
+    logger.error(f"Failed to initialize PostHog: {str(e)}")
+    posthog = None
 
 
 def _next_period_reset(period_key: str) -> str:
@@ -382,7 +396,106 @@ def _is_keyword_command(body: str) -> tuple[bool, str]:
     return (False, None)
 
 
-def _invoke_chat_handler(thread_id: str, message: str, user_id: str = None, phone_number: str = None):
+def _get_or_create_posthog_id(phone_number: str) -> str:
+    """
+    Get or create a PostHog anonymous ID for unregistered SMS user.
+    Stores mapping in sms-usage table for later linking when user registers.
+    
+    Args:
+        phone_number: Normalized phone number (e.g., "+15551234567")
+        
+    Returns:
+        PostHog distinct_id (UUID string)
+    """
+    # Check if we already have a PostHog ID for this phone
+    usage = get_sms_usage(phone_number)
+    
+    if usage and usage.get('posthogAnonymousId'):
+        logger.info(f"Found existing PostHog anonymous ID for {phone_number}")
+        return usage['posthogAnonymousId']
+    
+    # Generate new UUID for PostHog
+    anonymous_id = str(uuid4())
+    
+    try:
+        # Store in sms-usage table
+        sms_usage_table.update_item(
+            Key={'phoneNumber': phone_number},
+            UpdateExpression='SET posthogAnonymousId = :id, updatedAt = :now',
+            ExpressionAttributeValues={
+                ':id': anonymous_id,
+                ':now': datetime.now(timezone.utc).isoformat()
+            }
+        )
+        logger.info(f"Created PostHog anonymous ID for {phone_number}: {anonymous_id}")
+    except Exception as e:
+        logger.error(f"Failed to store PostHog anonymous ID: {str(e)}")
+    
+    return anonymous_id
+
+
+def _identify_sms_user(phone_number: str, user_id: str = None, user_profile: dict = None) -> str:
+    """
+    Identify user in PostHog for SMS activity.
+    
+    For registered users: Use their userId as distinct_id
+    For unregistered users: Get/create anonymous UUID and use as distinct_id
+    
+    Args:
+        phone_number: Full phone number (e.g., "+15551234567")
+        user_id: DynamoDB userId if registered
+        user_profile: Full user profile from DynamoDB
+    
+    Returns:
+        distinct_id to use for PostHog events
+    """
+    if not posthog:
+        logger.warning("PostHog not initialized, skipping identification")
+        return user_id if user_id else f"fallback_{re.sub(r'\\D', '', phone_number)}"
+    
+    if user_id and user_profile:
+        # REGISTERED USER - Use real userId
+        distinct_id = user_id
+        
+        properties = {
+            'email': user_profile.get('email'),
+            'phone_number': phone_number,
+            'first_name': user_profile.get('firstName'),
+            'last_name': user_profile.get('lastName'),
+            'plan': user_profile.get('plan', 'free'),
+            'is_subscribed': user_profile.get('isSubscribed', False),
+            'bible_version': user_profile.get('bibleVersion'),
+            'registration_status': 'registered',
+            'channel': 'sms',
+        }
+        
+        logger.info(f"Identifying registered SMS user: {user_id}")
+    else:
+        # UNREGISTERED USER - Get/create anonymous ID
+        distinct_id = _get_or_create_posthog_id(phone_number)
+        
+        properties = {
+            'phone_number': phone_number,
+            'registration_status': 'unregistered',
+            'channel': 'sms',
+            'first_seen_at': datetime.utcnow().isoformat(),
+        }
+        
+        logger.info(f"Identifying unregistered SMS user: {distinct_id}")
+    
+    # Identify in PostHog
+    try:
+        posthog.identify(
+            distinct_id=distinct_id,
+            properties=properties
+        )
+    except Exception as e:
+        logger.error(f"Failed to identify user in PostHog: {str(e)}")
+    
+    return distinct_id
+
+
+def _invoke_chat_handler(thread_id: str, message: str, user_id: str = None, phone_number: str = None, posthog_distinct_id: str = None):
     """
     Invoke the chat Lambda function
     
@@ -391,6 +504,7 @@ def _invoke_chat_handler(thread_id: str, message: str, user_id: str = None, phon
         message: User's message
         user_id: Optional user ID
         phone_number: Phone number
+        posthog_distinct_id: PostHog distinct_id for event tracking
         
     Returns:
         Response from chat handler
@@ -400,7 +514,8 @@ def _invoke_chat_handler(thread_id: str, message: str, user_id: str = None, phon
         'message': message,
         'channel': 'sms',
         'user_id': user_id,
-        'phone_number': phone_number
+        'phone_number': phone_number,
+        'posthog_distinct_id': posthog_distinct_id
     }
     
     logger.info("Invoking chat handler with thread_id: %s", thread_id)
@@ -507,16 +622,21 @@ def handler(event, context):
                 logger.info("Nudge limit reached for %s", from_num_normalized)
             return _success_response()
 
-        # Get user_id if available
+        # Get user_id and profile if available
         user_id = decision.get("user_profile", {}).get("userId") if decision.get("user_profile") else None
+        user_profile = decision.get("user_profile")
+
+        # Identify user in PostHog (registered or anonymous)
+        posthog_distinct_id = _identify_sms_user(from_num_normalized, user_id, user_profile)
 
         # Invoke chat handler with phone number as thread_id
-        logger.info("Invoking chat handler for SMS")
+        logger.info("Invoking chat handler for SMS with PostHog distinct_id: %s", posthog_distinct_id)
         chat_result = _invoke_chat_handler(
             thread_id=from_num_normalized,  # Phone number is the thread ID for SMS
             message=body,
             user_id=user_id,
-            phone_number=from_num_normalized
+            phone_number=from_num_normalized,
+            posthog_distinct_id=posthog_distinct_id
         )
 
         if not chat_result.get('success', False):

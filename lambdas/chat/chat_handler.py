@@ -209,7 +209,8 @@ def process_chat_message(
     channel: str,
     user_id: str = None,
     phone_number: str = None,
-    session_id: str = None
+    session_id: str = None,
+    posthog_distinct_id: str = None
 ) -> Dict[str, Any]:
     """
     Main function to process a chat message
@@ -221,6 +222,7 @@ def process_chat_message(
         user_id: Optional user ID
         phone_number: Optional phone number
         session_id: Optional session ID (for web)
+        posthog_distinct_id: Optional PostHog distinct_id for event tracking
         
     Returns:
         Dict with response and metadata
@@ -286,7 +288,8 @@ def process_chat_message(
             user_id=user_id,
             bible_version=bible_version,
             user_first_name=first_name,
-            phone_number=phone_number
+            phone_number=phone_number,
+            posthog_distinct_id=posthog_distinct_id
         )
         
         assistant_response = result.get('response', '')
@@ -425,7 +428,8 @@ def handler(event, context):
         "channel": "sms" or "web",
         "user_id": "..." (optional),
         "phone_number": "..." (optional),
-        "session_id": "..." (optional)
+        "session_id": "..." (optional),
+        "posthog_distinct_id": "..." (optional)
     }
     """
     logger.info("Chat handler invoked: %s", json.dumps(event))
@@ -438,6 +442,7 @@ def handler(event, context):
         user_id = event.get('user_id')
         phone_number = event.get('phone_number')
         session_id = event.get('session_id')
+        posthog_distinct_id = event.get('posthog_distinct_id')
         
         # Validate required fields
         if not thread_id or not message:
@@ -453,7 +458,8 @@ def handler(event, context):
             channel=channel,
             user_id=user_id,
             phone_number=phone_number,
-            session_id=session_id
+            session_id=session_id,
+            posthog_distinct_id=posthog_distinct_id
         )
         
         return {
