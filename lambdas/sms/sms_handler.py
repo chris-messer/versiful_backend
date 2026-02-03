@@ -485,18 +485,14 @@ def _identify_sms_user(phone_number: str, user_id: str = None, user_profile: dic
         
         logger.info(f"Identifying unregistered SMS user: {distinct_id}")
     
-    # Set person properties in PostHog using capture with $set
+    # Identify in PostHog
     try:
-        posthog.capture(
+        posthog.identify(
             distinct_id=distinct_id,
-            event='$identify',
-            properties={
-                '$set': properties
-            }
+            properties=properties
         )
-        logger.info(f"Successfully set PostHog properties for {distinct_id}")
     except Exception as e:
-        logger.error(f"Failed to set PostHog properties: {str(e)}")
+        logger.error(f"Failed to identify user in PostHog: {str(e)}")
     
     return distinct_id
 
