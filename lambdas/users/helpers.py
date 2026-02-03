@@ -140,7 +140,7 @@ def link_sms_history_to_user(phone_number: str, user_id: str):
                 
                 person_properties = {
                     'user_id': user_id,  # CRITICAL: Store DynamoDB userId as property
-                    '$email': user_profile.get('email'),  # Use $email for PostHog standard property
+                    'email': user_profile.get('email'),  # Plain email as per PostHog docs
                     'phone_number': phone_number,
                     'first_name': user_profile.get('firstName'),
                     'last_name': user_profile.get('lastName'),
