@@ -151,9 +151,9 @@ def link_sms_history_to_user(phone_number: str, user_id: str):
                     'channel': 'sms'
                 }
                 
-                # Identify with the anonymous_id (which is now the merged distinct_id)
-                # This sets person properties on the merged profile
-                posthog.identify(
+                # Set person properties on the merged profile
+                # Python SDK uses set() method to set person properties
+                posthog.set(
                     distinct_id=anonymous_id,
                     properties=person_properties
                 )

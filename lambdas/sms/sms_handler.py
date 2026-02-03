@@ -471,16 +471,17 @@ def _identify_sms_user(phone_number: str, user_id: str = None, user_profile: dic
             'channel': 'sms',
         }
         
-        logger.info(f"Identifying registered SMS user: {user_id}")
+        logger.info(f"Setting person properties for registered SMS user: {user_id}")
         
-        # Identify registered user in PostHog with properties
+        # Set person properties for registered user in PostHog
+        # Python SDK uses set() method, not identify()
         try:
-            posthog.identify(
+            posthog.set(
                 distinct_id=distinct_id,
                 properties=properties
             )
         except Exception as e:
-            logger.error(f"Failed to identify user in PostHog: {str(e)}")
+            logger.error(f"Failed to set person properties in PostHog: {str(e)}")
     else:
         # UNREGISTERED USER - Get/create anonymous ID
         # DO NOT identify in PostHog - just return the distinct_id
