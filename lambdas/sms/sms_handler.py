@@ -456,7 +456,7 @@ def _identify_sms_user(phone_number: str, user_id: str = None, user_profile: dic
         return user_id if user_id else f"fallback_{phone_digits}"
     
     if user_id and user_profile:
-        # REGISTERED USER - Use real userId
+        # REGISTERED USER - Use real userId and identify with properties
         distinct_id = user_id
         
         properties = {
@@ -472,27 +472,23 @@ def _identify_sms_user(phone_number: str, user_id: str = None, user_profile: dic
         }
         
         logger.info(f"Identifying registered SMS user: {user_id}")
+        
+        # Identify registered user in PostHog with properties
+        try:
+            posthog.identify(
+                distinct_id=distinct_id,
+                properties=properties
+            )
+        except Exception as e:
+            logger.error(f"Failed to identify user in PostHog: {str(e)}")
     else:
         # UNREGISTERED USER - Get/create anonymous ID
+        # DO NOT identify in PostHog - just return the distinct_id
+        # CallbackHandler will tag events with this ID, but won't create a person profile
+        # Person profile will be created when they register and we alias
         distinct_id = _get_or_create_posthog_id(phone_number)
         
-        properties = {
-            'phone_number': phone_number,
-            'registration_status': 'unregistered',
-            'channel': 'sms',
-            'first_seen_at': datetime.utcnow().isoformat(),
-        }
-        
-        logger.info(f"Identifying unregistered SMS user: {distinct_id}")
-    
-    # Identify in PostHog
-    try:
-        posthog.identify(
-            distinct_id=distinct_id,
-            properties=properties
-        )
-    except Exception as e:
-        logger.error(f"Failed to identify user in PostHog: {str(e)}")
+        logger.info(f"Using anonymous distinct_id for unregistered SMS user: {distinct_id}")
     
     return distinct_id
 
