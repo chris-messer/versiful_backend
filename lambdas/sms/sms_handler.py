@@ -451,7 +451,9 @@ def _identify_sms_user(phone_number: str, user_id: str = None, user_profile: dic
     """
     if not posthog:
         logger.warning("PostHog not initialized, skipping identification")
-        return user_id if user_id else f"fallback_{re.sub(r'\\D', '', phone_number)}"
+        # Can't use regex in f-string, compute separately
+        phone_digits = re.sub(r'\D', '', phone_number)
+        return user_id if user_id else f"fallback_{phone_digits}"
     
     if user_id and user_profile:
         # REGISTERED USER - Use real userId
