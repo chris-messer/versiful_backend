@@ -121,10 +121,11 @@ def link_sms_history_to_user(phone_number: str, user_id: str):
             logger.info(f"Linking SMS history: {anonymous_id} → {user_id}")
             
             # Alias anonymous SMS events to user account
-            # This merges all events from anonymous_id into the user's profile
+            # Python SDK uses: alias(previous_id, distinct_id)
+            # Links previous_id to distinct_id
             posthog.alias(
-                distinct_id=user_id,
-                alias=anonymous_id
+                previous_id=anonymous_id,
+                distinct_id=user_id
             )
             
             logger.info(f"Successfully linked SMS history to user {user_id}")
