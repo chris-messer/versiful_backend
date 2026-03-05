@@ -82,26 +82,38 @@ def send_welcome_sms(phone_number: str, first_name: str = None):
     """
     Send welcome message when user first registers their phone number
     Includes information about free tier, link to subscribe, and vCard to save contact
-    
+
+    Sends two separate messages:
+    1. Welcome text message (always succeeds)
+    2. Contact card vCard (sent separately, so if it fails the user still gets welcome)
+
     Args:
         phone_number: E.164 formatted phone number
         first_name: Optional first name to personalize the message
     """
     # Personalize greeting if we have a first name
     greeting = f"Welcome to Versiful, {first_name}! 🙏" if first_name else "Welcome to Versiful! 🙏"
-    
+
+    # First message: Welcome text (no media attachment)
     message = (
         f"{greeting}\n\n"
         f"You have 5 free messages per month. Text us anytime for biblical guidance and wisdom.\n\n"
-        f"Want unlimited messages? Subscribe at https://{VERSIFUL_DOMAIN}\n\n"
-        f"Tap the contact card to save Versiful to your contacts!"
+        f"Want unlimited messages? Subscribe at https://{VERSIFUL_DOMAIN}"
     )
-    
-    # Get vCard URL for current environment
+
+    logger.info(f"Sending welcome SMS (text only) to {phone_number}")
+    text_result = send_sms(phone_number, message)
+
+    # Second message: Contact card (sent separately)
+    # This way if vCard fails, user still gets the welcome message
+    vcard_message = "Tap the contact card below to save Versiful to your contacts! 📱"
     vcard_url = get_vcard_url()
-    
-    logger.info(f"Sending welcome SMS with vCard to {phone_number}")
-    return send_sms(phone_number, message, media_url=vcard_url)
+
+    logger.info(f"Sending contact card to {phone_number}")
+    vcard_result = send_sms(phone_number, vcard_message, media_url=vcard_url)
+
+    # Return True if at least the text message was sent successfully
+    return text_result is not None
 
 
 def send_subscription_confirmation_sms(phone_number: str):

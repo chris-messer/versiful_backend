@@ -108,10 +108,10 @@ resource "aws_s3_object" "vcard" {
   bucket        = aws_s3_bucket.react_static_site.id
   key           = "versiful-contact.vcf"
   content       = local.vcard_content
-  content_type  = "text/vcard"
+  content_type  = "text/x-vcard"  # Changed from text/vcard to text/x-vcard for better Twilio compatibility
   cache_control = "public, max-age=86400"  # Cache for 24 hours
   etag          = local.vcard_hash
-  
+
   depends_on = [
     aws_s3_bucket_policy.react_static_site_policy
   ]
