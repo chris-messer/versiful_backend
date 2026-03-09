@@ -42,12 +42,13 @@ def send_sms(to_number, message, environment='dev'):
     # Initialize Twilio client
     client = Client(account_sid, auth_token)
     
-    # Send message
+    # Send message with smart encoding enabled
     try:
         twilio_message = client.messages.create(
             from_=from_phone,
             body=message,
-            to=to_number
+            to=to_number,
+            smart_encoded=True  # Convert UCS2 to GSM-7 when possible
         )
         print(f"✅ Message sent successfully!")
         print(f"   To: {to_number}")

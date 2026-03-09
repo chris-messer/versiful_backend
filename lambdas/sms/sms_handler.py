@@ -378,22 +378,75 @@ def _is_keyword_command(body: str) -> tuple[bool, str]:
     """
     if not body:
         return (False, None)
-    
+
     normalized = body.strip().upper()
-    
+
     # STOP variants (TCPA required)
     if normalized in ["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"]:
         return (True, "STOP")
-    
+
     # START variants (TCPA required)
     if normalized in ["START", "UNSTOP"]:
         return (True, "START")
-    
+
     # HELP (TCPA required)
     if normalized in ["HELP", "INFO"]:
         return (True, "HELP")
-    
+
     return (False, None)
+
+
+def _is_sms_reaction(body: str) -> bool:
+    """
+    Detect if message is an SMS reaction (iOS/Android)
+
+    iOS reactions come through as text like:
+    - "Liked \"message\""
+    - "Loved \"message\""
+    - "Laughed at \"message\""
+    - "Emphasized \"message\""
+    - "Questioned \"message\""
+    - "Disliked \"message\""
+
+    Returns True if the message is a reaction, False otherwise
+    """
+    if not body:
+        return False
+
+    # Normalize the message
+    normalized = body.strip()
+
+    # Common iOS/Android reaction patterns
+    reaction_patterns = [
+        r'^Liked\s+".*"$',
+        r'^Loved\s+".*"$',
+        r'^Laughed at\s+".*"$',
+        r'^Emphasized\s+".*"$',
+        r'^Questioned\s+".*"$',
+        r'^Disliked\s+".*"$',
+        # Variations with single quotes
+        r"^Liked\s+'.*'$",
+        r"^Loved\s+'.*'$",
+        r"^Laughed at\s+'.*'$",
+        r"^Emphasized\s+'.*'$",
+        r"^Questioned\s+'.*'$",
+        r"^Disliked\s+'.*'$",
+        # Variations with smart quotes
+        r'^Liked\s+[""].*[""]$',
+        r'^Loved\s+[""].*[""]$',
+        r'^Laughed at\s+[""].*[""]$',
+        r'^Emphasized\s+[""].*[""]$',
+        r'^Questioned\s+[""].*[""]$',
+        r'^Disliked\s+[""].*[""]$',
+    ]
+
+    # Check if message matches any reaction pattern
+    for pattern in reaction_patterns:
+        if re.match(pattern, normalized, re.IGNORECASE):
+            logger.info(f"Detected SMS reaction: {normalized[:50]}...")
+            return True
+
+    return False
 
 
 def _get_or_create_posthog_id(phone_number: str) -> str:
@@ -566,17 +619,23 @@ def handler(event, context):
 
     # Check if message is a keyword command (STOP, START, HELP)
     is_keyword, keyword_type = _is_keyword_command(body)
-    
+
     if is_keyword:
         logger.info(f"Processing keyword command: {keyword_type}")
-        
+
         if keyword_type == "STOP":
             _handle_stop_keyword(from_num_normalized)
         elif keyword_type == "START":
             _handle_start_keyword(from_num_normalized)
         elif keyword_type == "HELP":
             _handle_help_keyword(from_num_normalized)
-        
+
+        return _success_response()
+
+    # Check if message is an SMS reaction (thumbs up, heart, etc.)
+    # These should be logged but not trigger responses
+    if _is_sms_reaction(body):
+        logger.info(f"SMS reaction detected from {from_num_normalized}, not triggering response")
         return _success_response()
 
     # Check if user is opted out

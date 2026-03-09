@@ -69,6 +69,9 @@ def send_sms(phone_number: str, message: str, media_url: str = None):
         if media_url:
             kwargs["media_url"] = [media_url]
         
+        # Enable smart encoding to reduce UCS2 segments by converting to GSM-7 when possible
+        kwargs["smart_encoded"] = True
+
         twilio_message = client.messages.create(**kwargs)
         logger.info(f"SMS sent to {phone_number}: {twilio_message.sid}")
         return twilio_message.sid

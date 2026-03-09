@@ -181,10 +181,12 @@ def send_message(to_num, message):
 
         client = Client(account_sid, auth_token)
 
+        # Enable smart encoding to reduce UCS2 segments by converting to GSM-7 when possible
         twilio_message = client.messages.create(
-            from_=VERSIFUL_PHONE, 
-            body=f"{message}", 
-            to=f"{to_num}"
+            from_=VERSIFUL_PHONE,
+            body=f"{message}",
+            to=f"{to_num}",
+            smart_encoded=True
         )
 
         return twilio_message.sid
