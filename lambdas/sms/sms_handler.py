@@ -418,7 +418,7 @@ def _is_sms_reaction(body: str) -> bool:
 
     # Common iOS/Android reaction patterns
     reaction_patterns = [
-        r'^Liked\s+".*"$',
+        r'^Liked\s+".*"$',  # Straight quotes
         r'^Loved\s+".*"$',
         r'^Laughed at\s+".*"$',
         r'^Emphasized\s+".*"$',
@@ -431,13 +431,13 @@ def _is_sms_reaction(body: str) -> bool:
         r"^Emphasized\s+'.*'$",
         r"^Questioned\s+'.*'$",
         r"^Disliked\s+'.*'$",
-        # Variations with smart quotes
-        r'^Liked\s+[""].*[""]$',
-        r'^Loved\s+[""].*[""]$',
-        r'^Laughed at\s+[""].*[""]$',
-        r'^Emphasized\s+[""].*[""]$',
-        r'^Questioned\s+[""].*[""]$',
-        r'^Disliked\s+[""].*[""]$',
+        # Variations with smart quotes (Unicode escapes to ensure correct characters)
+        r'^Liked\s+[\u201c\u201d].*[\u201c\u201d]$',  # U+201C (") and U+201D (")
+        r'^Loved\s+[\u201c\u201d].*[\u201c\u201d]$',
+        r'^Laughed at\s+[\u201c\u201d].*[\u201c\u201d]$',
+        r'^Emphasized\s+[\u201c\u201d].*[\u201c\u201d]$',
+        r'^Questioned\s+[\u201c\u201d].*[\u201c\u201d]$',
+        r'^Disliked\s+[\u201c\u201d].*[\u201c\u201d]$',
     ]
 
     # Check if message matches any reaction pattern
