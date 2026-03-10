@@ -408,16 +408,30 @@ def _is_sms_reaction(body: str) -> bool:
     - "Questioned \"message\""
     - "Disliked \"message\""
 
+    Android reactions come through as emoji + "to" + quoted message:
+    - "👍 to \"message\""
+    - "❤️ to \"message\""
+    - "😂 to \"message\""
+    - "😮 to \"message\""
+    - "😠 to \"message\""
+    - "😢 to \"message\""
+    - etc.
+
+    Note: Android reactions may include zero-width Unicode characters
+    (U+200A hair space, U+200B zero-width space, etc.)
+
     Returns True if the message is a reaction, False otherwise
     """
     if not body:
         return False
 
-    # Normalize the message
+    # Normalize the message by stripping whitespace and zero-width characters
+    # U+200B = zero-width space, U+200C = zero-width non-joiner, U+200D = zero-width joiner
+    # U+200A = hair space, U+FEFF = zero-width no-break space
     normalized = body.strip()
 
-    # Common iOS/Android reaction patterns
-    reaction_patterns = [
+    # iOS reaction patterns (word-based)
+    ios_reaction_patterns = [
         r'^Liked\s+".*"$',  # Straight quotes
         r'^Loved\s+".*"$',
         r'^Laughed at\s+".*"$',
@@ -440,11 +454,30 @@ def _is_sms_reaction(body: str) -> bool:
         r'^Disliked\s+[\u201c\u201d].*[\u201c\u201d]$',
     ]
 
-    # Check if message matches any reaction pattern
-    for pattern in reaction_patterns:
+    # Check iOS patterns
+    for pattern in ios_reaction_patterns:
         if re.match(pattern, normalized, re.IGNORECASE):
-            logger.info(f"Detected SMS reaction: {normalized[:50]}...")
+            logger.info(f"Detected iOS SMS reaction: {normalized[:50]}...")
             return True
+
+    # Android reaction pattern: [emoji] to "[message]"
+    # Common Android reaction emojis (using Unicode code points):
+    # 👍 U+1F44D, 👎 U+1F44E, ❤️ U+2764, 😂 U+1F602, 😮 U+1F62E,
+    # 😠 U+1F620, 😡 U+1F621, 😢 U+1F622, 💩 U+1F4A9, 🎉 U+1F389
+
+    # Pattern to match: optional zero-width chars, emoji, optional zero-width chars, " to ", quoted text
+    # Use \s* to handle various whitespace and zero-width characters
+    android_reaction_pattern = (
+        r'^[\u200a\u200b\u200c\u200d\ufeff]*'  # Optional zero-width characters at start
+        r'[\U0001F44D\U0001F44E\u2764\ufe0f\U0001F602\U0001F62E\U0001F620\U0001F621\U0001F622\U0001F4A9\U0001F389]+'  # Emoji (with optional variation selectors)
+        r'[\u200a\u200b\u200c\u200d\ufeff]*'  # Optional zero-width characters after emoji
+        r'\s+to\s+'  # " to " (with flexible whitespace)
+        r'["\u201c\u201d].*["\u201c\u201d]'  # Quoted message (straight or smart quotes)
+    )
+
+    if re.match(android_reaction_pattern, normalized, re.IGNORECASE | re.DOTALL):
+        logger.info(f"Detected Android SMS reaction: {normalized[:50]}...")
+        return True
 
     return False
 
