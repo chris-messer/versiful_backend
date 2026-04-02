@@ -396,6 +396,44 @@ def _is_keyword_command(body: str) -> tuple[bool, str]:
     return (False, None)
 
 
+def _is_toll_free_number(phone_number: str) -> bool:
+    """
+    Check if a phone number is a toll-free number.
+
+    Toll-free numbers in North America use these area codes:
+    - 800, 833, 844, 855, 866, 877, 888
+
+    These are typically used for automated marketing systems and should not
+    be responded to, as they can create SMS loops and waste API credits.
+
+    Args:
+        phone_number: Normalized phone number (e.g., "+18334543725")
+
+    Returns:
+        True if the number is toll-free, False otherwise
+    """
+    if not phone_number:
+        return False
+
+    # Check for North American toll-free prefixes
+    toll_free_prefixes = [
+        '+1800',  # Original toll-free
+        '+1833',  # Added 2017
+        '+1844',  # Added 2013
+        '+1855',  # Added 2010
+        '+1866',  # Added 2000
+        '+1877',  # Added 1998
+        '+1888',  # Added 1996
+    ]
+
+    for prefix in toll_free_prefixes:
+        if phone_number.startswith(prefix):
+            logger.info(f"Detected toll-free number: {phone_number}")
+            return True
+
+    return False
+
+
 def _is_sms_reaction(body: str) -> bool:
     """
     Detect if message is an SMS reaction (iOS/Android)
@@ -648,6 +686,11 @@ def handler(event, context):
 
     if not from_num_normalized:
         logger.info("Could not normalize phone number: %s", from_num)
+        return _success_response()
+
+    # Block toll-free numbers to prevent SMS loops with automated marketing systems
+    if _is_toll_free_number(from_num_normalized):
+        logger.warning(f"Blocking message from toll-free number: {from_num_normalized}")
         return _success_response()
 
     # Check if message is a keyword command (STOP, START, HELP)
