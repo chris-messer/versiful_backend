@@ -284,7 +284,7 @@ class AgentService:
         
         # Inject user's name into system prompt if available
         if user_first_name:
-            name_instruction = f"\n\nThe user's name is {user_first_name}. Feel free to address them by name when appropriate to create a warm, personal connection."
+            name_instruction = f"\n\nThe user's name is {user_first_name}. Feel free to address them by name when appropriate to create a warm, personal connection. It does not need to be in every message."
             system_prompt = system_prompt + name_instruction
         
         # Inject bible version preference into system prompt
