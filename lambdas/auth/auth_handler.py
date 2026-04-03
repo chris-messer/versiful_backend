@@ -81,7 +81,11 @@ def create_or_update_user_email(user_id, email):
 
 def handler(event, context):
     try:
-        logger.info('Received event: %s', event)
+        # Log request metadata without sensitive body content
+        logger.info('Request: %s %s - RequestId: %s',
+                   event.get('httpMethod'),
+                   event.get('path'),
+                   context.aws_request_id if context else 'N/A')
         route = event['path']
         method = event['httpMethod']
 

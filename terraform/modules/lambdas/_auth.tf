@@ -26,6 +26,15 @@ data "archive_file" "auth_zip" {
   ]
 }
 
+# CloudWatch Log Group for auth Lambda (no retention - keep indefinitely)
+resource "aws_cloudwatch_log_group" "auth_function_logs" {
+  name = "/aws/lambda/${var.environment}-${var.project_name}-auth_function"
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
 # Deploy Lambda function
 resource "aws_lambda_function" "auth_function" {
   function_name = "${var.environment}-${var.project_name}-auth_function"
@@ -38,7 +47,7 @@ resource "aws_lambda_function" "auth_function" {
     aws_lambda_layer_version.core_layer.arn,
     aws_lambda_layer_version.jwt_layer.arn
   ]
-  # depends_on = [null_resource.package_auth]
+  depends_on = [aws_cloudwatch_log_group.auth_function_logs]
   timeout       = 30
 
   environment {
