@@ -248,6 +248,8 @@ def handle_login(event):
         return error_response(401, 'Invalid username or password')
     except cognito_client.exceptions.UserNotFoundException:
         return error_response(401, 'Invalid username or password')
+    except cognito_client.exceptions.UserNotConfirmedException:
+        return error_response(403, 'Please confirm your email address before logging in')
     except Exception as e:
         logger.error(f"Login error: {str(e)}")
         return error_response(500, 'Internal server error')
@@ -266,6 +268,9 @@ def handle_signup(event):
             ClientId=CLIENT_ID,
             Username=username,
             Password=password,
+            UserAttributes=[
+                {'Name': 'email', 'Value': username},
+            ]
         )
 
         # Attempt to auto-confirm to reduce friction; ignore if not permitted
@@ -273,6 +278,14 @@ def handle_signup(event):
             cognito_client.admin_confirm_sign_up(
                 UserPoolId=USER_POOL_ID,
                 Username=username,
+            )
+            # Mark email as verified to enable password reset
+            cognito_client.admin_update_user_attributes(
+                UserPoolId=USER_POOL_ID,
+                Username=username,
+                UserAttributes=[
+                    {'Name': 'email_verified', 'Value': 'true'}
+                ]
             )
         except cognito_client.exceptions.NotAuthorizedException:
             pass
@@ -448,6 +461,12 @@ def handle_forgot_password(event):
         }
     except cognito_client.exceptions.LimitExceededException:
         return error_response(429, 'Too many requests. Please try again later.')
+    except cognito_client.exceptions.InvalidParameterException as e:
+        error_message = str(e)
+        if 'no registered/verified email' in error_message.lower():
+            return error_response(400, 'Your email address is not verified. Please contact support.')
+        logger.error(f"Forgot password error: {error_message}")
+        return error_response(400, 'Unable to reset password. Please contact support.')
     except Exception as e:
         logger.error(f"Forgot password error: {str(e)}")
         return error_response(500, 'Internal server error')
