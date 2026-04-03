@@ -50,7 +50,7 @@ def create_or_update_user_email(user_id, email):
     try:
         # Check if user exists
         response = users_table.get_item(Key={"userId": user_id})
-        
+
         if "Item" in response:
             # User exists, only update email if not already set
             if not response["Item"].get("email"):
@@ -61,16 +61,18 @@ def create_or_update_user_email(user_id, email):
                 )
                 logger.info(f"Updated email for existing user {user_id}")
         else:
-            # Create new user with email
+            # Create new user with email and createdAt timestamp
+            now = datetime.now().isoformat()
             users_table.put_item(
                 Item={
                     "userId": user_id,
                     "email": email,
                     "isSubscribed": False,
-                    "isRegistered": False
+                    "isRegistered": False,
+                    "createdAt": now
                 }
             )
-            logger.info(f"Created new user {user_id} with email")
+            logger.info(f"Created new user {user_id} with email at {now}")
     except Exception as e:
         logger.error(f"Error creating/updating user email: {str(e)}")
 

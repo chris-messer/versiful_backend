@@ -188,7 +188,8 @@ def create_user(event, headers):
         registered = response["Item"].get("isRegistered", False)
         return {"statusCode": 200,"body": json.dumps({"isSubscribed": subscribed, "isRegistered": registered}, cls=DecimalEncoder)}
 
-    table.put_item(Item={"userId": user_id})
+    now = datetime.now(timezone.utc).isoformat()
+    table.put_item(Item={"userId": user_id, "createdAt": now})
     return {"statusCode": 200, "body": json.dumps({"isSubscribed": False, "isRegistered": False})}
 
 
@@ -238,7 +239,8 @@ def update_user_settings(event, headers):
         # Ensure the user item exists before attempting an update
         existing = table.get_item(Key={"userId": user_id})
         if "Item" not in existing:
-            table.put_item(Item={"userId": user_id})
+            now = datetime.now(timezone.utc).isoformat()
+            table.put_item(Item={"userId": user_id, "createdAt": now})
 
         update_expression = "SET "
         expression_attribute_values = {}
