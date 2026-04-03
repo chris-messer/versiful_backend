@@ -99,11 +99,14 @@ def backfill_created_at(environment, project_name="versiful", dry_run=False):
 
     for cognito_user in cognito_users:
         # Extract user info from Cognito
-        user_id = cognito_user.get('Username')  # This is the sub/userId
+        # Get the 'sub' attribute which is the actual userId in DynamoDB
+        user_attributes = {attr['Name']: attr['Value'] for attr in cognito_user.get('Attributes', [])}
+        user_id = user_attributes.get('sub')
         user_create_date = cognito_user.get('UserCreateDate')
+        cognito_username = cognito_user.get('Username')
 
         if not user_id or not user_create_date:
-            print(f"Skipping user - missing userId or UserCreateDate")
+            print(f"Skipping user {cognito_username} - missing userId or UserCreateDate")
             error_count += 1
             continue
 
@@ -115,7 +118,7 @@ def backfill_created_at(environment, project_name="versiful", dry_run=False):
             response = users_table.get_item(Key={"userId": user_id})
 
             if "Item" not in response:
-                print(f"⚠️  User {user_id} exists in Cognito but not in DynamoDB - skipping")
+                print(f"⚠️  User {cognito_username} (sub: {user_id}) exists in Cognito but not in DynamoDB - skipping")
                 skipped_count += 1
                 continue
 
@@ -123,13 +126,15 @@ def backfill_created_at(environment, project_name="versiful", dry_run=False):
 
             # Check if createdAt already exists
             if user_item.get("createdAt"):
-                print(f"✓ User {user_id} already has createdAt: {user_item['createdAt']} - skipping")
+                email = user_item.get('email', 'no-email')
+                print(f"✓ User {email} already has createdAt: {user_item['createdAt']} - skipping")
                 skipped_count += 1
                 continue
 
             # Update user with createdAt
+            email = user_item.get('email', user_id)
             if dry_run:
-                print(f"[DRY RUN] Would set createdAt={created_at} for user {user_id}")
+                print(f"[DRY RUN] Would set createdAt={created_at} for user {email}")
                 updated_count += 1
             else:
                 users_table.update_item(
@@ -137,11 +142,11 @@ def backfill_created_at(environment, project_name="versiful", dry_run=False):
                     UpdateExpression="SET createdAt = :createdAt",
                     ExpressionAttributeValues={":createdAt": created_at}
                 )
-                print(f"✓ Updated user {user_id} with createdAt: {created_at}")
+                print(f"✓ Updated user {email} with createdAt: {created_at}")
                 updated_count += 1
 
         except Exception as e:
-            print(f"❌ Error updating user {user_id}: {str(e)}")
+            print(f"❌ Error updating user {cognito_username} (sub: {user_id}): {str(e)}")
             error_count += 1
 
     print("-" * 80)
