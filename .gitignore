@@ -72,3 +72,11 @@ terraform/state-backup-*.json
 conversion_analysis/results/*.csv
 conversion_analysis/results/*.png
 posthog-analytics.csv
+
+# Outreach campaign temporary files
+outreach_messages.csv
+unregistered_texters_outreach.csv
+*_outreach_plan.md
+scripts/analyze_unregistered_texters.py
+scripts/analyze_users_for_outreach.py
+scripts/send_outreach_messages.py
