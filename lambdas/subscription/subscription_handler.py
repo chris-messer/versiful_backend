@@ -120,6 +120,7 @@ def create_checkout_session(event, context):
             payment_method_types=["card"],
             line_items=[{"price": price_id, "quantity": 1}],
             mode="subscription",
+            allow_promotion_codes=True,
             success_url=success_url,
             cancel_url=cancel_url,
             metadata={"userId": user_id}

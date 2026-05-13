@@ -41,6 +41,7 @@ env = os.environ.get("ENVIRONMENT", "dev")
 project_name = os.environ.get("PROJECT_NAME", "versiful")
 table_name = f"{env}-{project_name}-users"
 table = dynamodb.Table(table_name)
+promo_codes_table = dynamodb.Table(f"{env}-{project_name}-promo-codes")
 
 
 def handler(event, context):
@@ -118,6 +119,11 @@ def handle_checkout_completed(session):
     
     logger.info(f"Checkout completed for user {user_id}, subscription {subscription_id}")
     
+    # Extract promo code from checkout session if one was applied
+    promo_code = _extract_promo_code(session)
+    if promo_code:
+        logger.info(f"Promo code '{promo_code}' used by user {user_id}")
+    
     # Get subscription details - use expand to get all fields
     subscription = stripe.Subscription.retrieve(
         subscription_id,
@@ -162,6 +168,11 @@ def handle_checkout_completed(session):
         update_expression += ", currentPeriodEnd = :period_end"
         expression_values[":period_end"] = int(period_end)
     
+    # Store promo code on user record for attribution
+    if promo_code:
+        update_expression += ", promoCode = :promo"
+        expression_values[":promo"] = promo_code
+    
     table.update_item(
         Key={"userId": user_id},
         UpdateExpression=update_expression,
@@ -171,7 +182,11 @@ def handle_checkout_completed(session):
         ExpressionAttributeValues=expression_values
     )
     
-    logger.info(f"Updated user {user_id} with subscription {plan}, period_end: {period_end}")
+    logger.info(f"Updated user {user_id} with subscription {plan}, period_end: {period_end}, promoCode: {promo_code}")
+    
+    # Track promo code usage in promo-codes table
+    if promo_code:
+        _track_promo_code_usage(promo_code, user_id)
     
     # Send subscription confirmation SMS if user has a phone number
     try:
@@ -184,8 +199,59 @@ def handle_checkout_completed(session):
             else:
                 logger.info(f"User {user_id} has no phone number registered, skipping SMS")
     except Exception as sms_error:
-        # Log error but don't fail the webhook
         logger.error(f"Failed to send subscription confirmation SMS for user {user_id}: {str(sms_error)}", exc_info=True)
+
+
+def _extract_promo_code(session):
+    """Extract the customer-facing promotion code from a checkout session.
+    
+    Retrieves the full session with discounts expanded to get the
+    promotion code the customer entered (e.g. 'WELCOME', 'FRIEND2026').
+    Returns None if no promotion code was applied.
+    """
+    try:
+        full_session = stripe.checkout.Session.retrieve(
+            session["id"],
+            expand=["total_details.breakdown"]
+        )
+        
+        discounts = full_session.get("total_details", {}).get("breakdown", {}).get("discounts", [])
+        if discounts:
+            discount = discounts[0].get("discount", {})
+            promo = discount.get("promotion_code")
+            if promo:
+                # promo is a Stripe PromotionCode ID; retrieve it to get the customer-facing code
+                promo_obj = stripe.PromotionCode.retrieve(promo)
+                return promo_obj.get("code", "").upper()
+    except Exception as e:
+        logger.warning(f"Could not extract promo code from session: {e}")
+    
+    return None
+
+
+def _track_promo_code_usage(code, user_id):
+    """Atomically increment usage counter on the promo-codes table.
+    
+    Creates the record if it doesn't exist yet (first redemption before
+    the code was seeded via the dashboard). Appends the userId to a
+    redeemedBy list for audit.
+    """
+    try:
+        promo_codes_table.update_item(
+            Key={"code": code},
+            UpdateExpression="""
+                SET updatedAt = :now
+                ADD timesRedeemed :inc, redeemedBy :uid
+            """,
+            ExpressionAttributeValues={
+                ":inc": 1,
+                ":now": datetime.now(timezone.utc).isoformat(),
+                ":uid": {user_id}
+            }
+        )
+        logger.info(f"Tracked promo code '{code}' redemption by user {user_id}")
+    except Exception as e:
+        logger.error(f"Failed to track promo code usage for '{code}': {e}", exc_info=True)
 
 
 def handle_subscription_created(subscription):

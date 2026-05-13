@@ -69,3 +69,8 @@ variable "posthog_apikey" {
   description = "PostHog API key for LLM analytics"
   type        = string
 }
+
+variable "promo_codes_dynamodb_arn" {
+  description = "ARN of the DynamoDB table for promo codes"
+  type        = string
+}

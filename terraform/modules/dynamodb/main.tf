@@ -9,6 +9,18 @@ resource "aws_dynamodb_table" "users" {
   }
 }
 
+# Promo code tracking for Stripe coupons/promotions
+resource "aws_dynamodb_table" "promo_codes" {
+  name         = "${var.environment}-${var.project_name}-promo-codes"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "code"
+
+  attribute {
+    name = "code"
+    type = "S"
+  }
+}
+
 # Phone-level SMS usage tracking (per environment)
 resource "aws_dynamodb_table" "sms_usage" {
   name         = "${var.environment}-${var.project_name}-sms-usage"

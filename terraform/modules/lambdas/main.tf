@@ -38,8 +38,10 @@ resource "aws_iam_policy" "dynamodb_access" {
         Resource = [
           var.users_dynamodb_arn, 
           var.sms_usage_dynamodb_arn,
+          var.promo_codes_dynamodb_arn,
           "${var.users_dynamodb_arn}/*",
-          "${var.sms_usage_dynamodb_arn}/*"
+          "${var.sms_usage_dynamodb_arn}/*",
+          "${var.promo_codes_dynamodb_arn}/*"
         ]
       }
     ]

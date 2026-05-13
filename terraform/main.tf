@@ -130,6 +130,7 @@ module "lambdas" {
   frontend_domain          = var.environment == "prod" ? local.domain : "${var.environment}.${local.domain}"
   versiful_phone           = var.versiful_phone
   posthog_apikey           = var.posthog_apikey
+  promo_codes_dynamodb_arn = module.dynamodb.promo_codes_dynamodb_arn
 }
 
 module "cognito" {
