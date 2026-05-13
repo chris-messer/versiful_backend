@@ -114,13 +114,21 @@ def create_checkout_session(event, context):
                 ExpressionAttributeValues={":cid": customer_id}
             )
         
+        # Only allow promo codes on monthly plans (not annual)
+        monthly_price_ids = [
+            "price_1ShYtwB2NunFksMzz5ZHryaw",  # dev
+            "price_1ShZ1aAyC9k5KbaXIxag1Bd6",  # staging
+            "price_1ShYvGBcYhqWB9qElNFW7ZDS",  # prod
+        ]
+        allow_promos = price_id in monthly_price_ids
+
         # Create checkout session
         checkout_session = stripe.checkout.Session.create(
             customer=customer_id,
             payment_method_types=["card"],
             line_items=[{"price": price_id, "quantity": 1}],
             mode="subscription",
-            allow_promotion_codes=True,
+            allow_promotion_codes=allow_promos,
             success_url=success_url,
             cancel_url=cancel_url,
             metadata={"userId": user_id}
