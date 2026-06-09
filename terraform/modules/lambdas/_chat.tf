@@ -23,14 +23,14 @@ resource "aws_lambda_function" "chat_function" {
   filename         = data.archive_file.chat_zip.output_path
   source_code_hash = data.archive_file.chat_zip.output_base64sha256
   
-  # shared_dependencies is mounted to pick up the promoted companion memory modules
-  # (neon_client, embeddings, memory_store, memory_retrieval, memory_extractor) +
-  # secrets_helper. It is ordered BEFORE langchain so, on any /opt/python file
-  # collision (e.g. openai/pydantic/posthog), the langchain layer (listed last) wins
-  # per AWS layer merge order — preserving the chat lambda's pinned langchain stack.
+  # The langchain layer now vendors the shared Python modules (secrets_helper, the
+  # neon/memory modules, the promoted agent-tool modules) alongside its heavy deps
+  # (openai/langgraph/psycopg/pydantic/posthog), so chat needs only core + langchain.
+  # We intentionally do NOT mount shared_dependencies here: it re-bundles twilio/stripe/
+  # cryptography + a duplicate openai/pydantic stack that chat doesn't need, and stacking
+  # it on top of langchain pushed the unzipped layers past the 250 MB Lambda limit.
   layers = [
     aws_lambda_layer_version.core_layer.arn,
-    aws_lambda_layer_version.shared_dependencies.arn,
     aws_lambda_layer_version.langchain_layer.arn
   ]
   
@@ -87,12 +87,11 @@ resource "aws_lambda_function" "web_chat_function" {
   filename         = data.archive_file.web_chat_zip.output_path
   source_code_hash = data.archive_file.web_chat_zip.output_base64sha256
   
-  # Same layering rationale as chat_function: shared_dependencies before langchain so
-  # web_handler -> chat_handler -> agent_service can import the shared memory modules,
-  # while the langchain layer (last) keeps precedence on any file collision.
+  # Same layering rationale as chat_function: the langchain layer carries both the
+  # heavy deps and the shared modules (web_handler -> chat_handler -> agent_service can
+  # import them), so core + langchain is sufficient and stays under the 250 MB limit.
   layers = [
     aws_lambda_layer_version.core_layer.arn,
-    aws_lambda_layer_version.shared_dependencies.arn,
     aws_lambda_layer_version.langchain_layer.arn
   ]
   

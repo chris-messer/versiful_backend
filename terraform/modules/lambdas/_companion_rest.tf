@@ -34,10 +34,10 @@ resource "aws_lambda_function" "daily_verse_function" {
   role             = aws_iam_role.lambda_exec_role.arn
   filename         = data.archive_file.daily_verse_zip.output_path
   source_code_hash = data.archive_file.daily_verse_zip.output_base64sha256
-  # langchain_layer (after shared_dependencies) supplies psycopg/Neon so the read
-  # endpoint can personalize from memories (recommended; spec §6).
+  # langchain_layer supplies psycopg/Neon AND the shared modules so the read endpoint
+  # can personalize from memories (recommended; spec §6). No twilio/stripe needed, so we
+  # avoid the heavy shared_dependencies layer (kept this function under the 250 MB limit).
   layers = [
-    aws_lambda_layer_version.shared_dependencies.arn,
     aws_lambda_layer_version.langchain_layer.arn
   ]
   timeout = 30
@@ -195,10 +195,10 @@ resource "aws_lambda_function" "reflections_function" {
   role             = aws_iam_role.lambda_exec_role.arn
   filename         = data.archive_file.reflections_zip.output_path
   source_code_hash = data.archive_file.reflections_zip.output_base64sha256
-  # langchain_layer (after shared_dependencies) supplies psycopg so the Neon-backed
+  # langchain_layer supplies psycopg (and the shared modules) so the Neon-backed
   # reflections endpoints work. REQUIRED — without it every endpoint 503s (spec §8).
+  # No twilio/stripe needed, so shared_dependencies is intentionally not mounted.
   layers = [
-    aws_lambda_layer_version.shared_dependencies.arn,
     aws_lambda_layer_version.langchain_layer.arn
   ]
   timeout = 30
@@ -215,7 +215,7 @@ resource "aws_lambda_function" "reflections_function" {
 
   tags = {
     Environment = var.environment
-    Purpose     = "Companion reflections API (Neon)"
+    Purpose     = "Companion reflections API - Neon"
   }
 }
 
@@ -442,10 +442,10 @@ resource "aws_lambda_function" "walk_function" {
   role             = aws_iam_role.lambda_exec_role.arn
   filename         = data.archive_file.walk_zip.output_path
   source_code_hash = data.archive_file.walk_zip.output_base64sha256
-  # langchain_layer (after shared_dependencies) supplies psycopg for the Neon memory
+  # langchain_layer supplies psycopg (and the shared modules) for the Neon memory
   # list/delete/summary controls. REQUIRED for the memory endpoints (spec §11.2a).
+  # No twilio/stripe needed, so shared_dependencies is intentionally not mounted.
   layers = [
-    aws_lambda_layer_version.shared_dependencies.arn,
     aws_lambda_layer_version.langchain_layer.arn
   ]
   timeout = 30

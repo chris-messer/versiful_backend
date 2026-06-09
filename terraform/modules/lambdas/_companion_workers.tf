@@ -4,8 +4,8 @@
 #
 # Secrets/Neon: workers use the shared lambda role (secretsmanager:GetSecretValue
 # already attached) and read the Neon URL at runtime via get_secret('neon_database_url').
-# The shared_dependencies layer bundles secrets_helper.py + twilio + openai, so a
-# worker can read secrets, call the LLM, and send SMS once implemented.
+# Each worker mounts sms_layer (twilio) + langchain_layer (openai/langgraph/psycopg +
+# the vendored shared modules), so it can read secrets, call the LLM, and send SMS.
 
 # ----------------------------------------------------------------------------
 # EventBridge Scheduler execution role -- lets the schedules invoke the workers.
@@ -72,8 +72,12 @@ resource "aws_lambda_function" "daily_verse_worker" {
   role             = aws_iam_role.lambda_exec_role.arn
   filename         = data.archive_file.daily_verse_worker_zip.output_path
   source_code_hash = data.archive_file.daily_verse_worker_zip.output_base64sha256
+  # sms_layer supplies twilio for send_sms; langchain_layer supplies openai/psycopg +
+  # the shared modules (sms_notifications/verse_engine deps). We deliberately avoid the
+  # heavy shared_dependencies layer here — stacking it on langchain exceeded the 250 MB
+  # unzipped Lambda limit. twilio is the only thing these workers needed from it.
   layers = [
-    aws_lambda_layer_version.shared_dependencies.arn,
+    aws_lambda_layer_version.sms_layer.arn,
     aws_lambda_layer_version.langchain_layer.arn
   ]
   timeout     = 120
@@ -133,8 +137,10 @@ resource "aws_lambda_function" "reading_plan_delivery" {
   role             = aws_iam_role.lambda_exec_role.arn
   filename         = data.archive_file.reading_plan_delivery_zip.output_path
   source_code_hash = data.archive_file.reading_plan_delivery_zip.output_base64sha256
+  # sms_layer supplies twilio for send_sms; langchain_layer supplies openai/psycopg +
+  # the shared modules. Avoids the heavy shared_dependencies layer (250 MB limit).
   layers = [
-    aws_lambda_layer_version.shared_dependencies.arn,
+    aws_lambda_layer_version.sms_layer.arn,
     aws_lambda_layer_version.langchain_layer.arn
   ]
   timeout     = 120
@@ -196,8 +202,10 @@ resource "aws_lambda_function" "checkin_dispatcher" {
   role             = aws_iam_role.lambda_exec_role.arn
   filename         = data.archive_file.checkin_dispatcher_zip.output_path
   source_code_hash = data.archive_file.checkin_dispatcher_zip.output_base64sha256
+  # sms_layer supplies twilio for send_sms; langchain_layer supplies openai/psycopg +
+  # the shared modules. Avoids the heavy shared_dependencies layer (250 MB limit).
   layers = [
-    aws_lambda_layer_version.shared_dependencies.arn,
+    aws_lambda_layer_version.sms_layer.arn,
     aws_lambda_layer_version.langchain_layer.arn
   ]
   timeout     = 300
