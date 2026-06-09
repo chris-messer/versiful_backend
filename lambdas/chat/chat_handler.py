@@ -423,7 +423,6 @@ def process_chat_message(
             history_length = len(history)
             if history_length == 0 or (history_length > 0 and history_length % 5 == 0):
                 # Generate NEW trace_id for title generation (should not share with message trace)
-                import uuid
                 title_trace_id = str(uuid.uuid4())
                 
                 # For first message, use just that message. For updates, use recent history
