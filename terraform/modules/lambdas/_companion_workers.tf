@@ -43,7 +43,9 @@ resource "aws_iam_policy" "companion_scheduler_invoke" {
           aws_lambda_function.reading_plan_delivery.arn,
           "${aws_lambda_function.reading_plan_delivery.arn}:*",
           aws_lambda_function.checkin_dispatcher.arn,
-          "${aws_lambda_function.checkin_dispatcher.arn}:*"
+          "${aws_lambda_function.checkin_dispatcher.arn}:*",
+          aws_lambda_function.prayer_reminder.arn,
+          "${aws_lambda_function.prayer_reminder.arn}:*"
         ]
       }
     ]
@@ -247,6 +249,77 @@ resource "aws_scheduler_schedule" "checkin_dispatcher_schedule" {
 
   target {
     arn      = aws_lambda_function.checkin_dispatcher.arn
+    role_arn = aws_iam_role.companion_scheduler_role.arn
+  }
+}
+
+# ----------------------------------------------------------------------------
+# prayer_reminder -- sends due prayer reminders (reminderCadence daily/weekly,
+# nextReminderAt <= now), premium-gated, idempotent claim-before-send (§7, §15.2)
+# ----------------------------------------------------------------------------
+data "archive_file" "prayer_reminder_zip" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../../lambdas/prayer_reminder"
+  output_path = "${path.module}/../../../lambdas/prayer_reminder/prayer_reminder.zip"
+  excludes    = ["__pycache__", "*.pyc", "*.zip", ".pytest_cache", "*.egg-info"]
+}
+
+resource "aws_lambda_function" "prayer_reminder" {
+  function_name    = "${var.environment}-${var.project_name}-prayer-reminder"
+  handler          = "prayer_reminder_handler.handler"
+  runtime          = "python3.11"
+  role             = aws_iam_role.lambda_exec_role.arn
+  filename         = data.archive_file.prayer_reminder_zip.output_path
+  source_code_hash = data.archive_file.prayer_reminder_zip.output_base64sha256
+  # sms_layer supplies twilio for send_sms; langchain_layer supplies the vendored
+  # shared modules (sms_notifications). Same minimal pair as the sibling workers —
+  # we deliberately avoid the heavy shared_dependencies layer (250 MB limit).
+  layers = [
+    aws_lambda_layer_version.sms_layer.arn,
+    aws_lambda_layer_version.langchain_layer.arn
+  ]
+  timeout     = 120
+  memory_size = 512
+
+  environment {
+    variables = {
+      ENVIRONMENT     = var.environment
+      PROJECT_NAME    = var.project_name
+      SECRET_ARN      = var.secret_arn
+      USERS_TABLE     = local.users_table_name
+      PRAYERS_TABLE   = aws_dynamodb_table.prayers.name
+      VERSIFUL_PHONE  = var.versiful_phone
+      POSTHOG_API_KEY = var.posthog_apikey
+      # Fallback timezone for users without a stored tz when bucketing the 15-min run.
+      DEFAULT_TIMEZONE = "America/New_York"
+      # Local time-of-day reminders land (HH:MM in the user's timezone).
+      PRAYER_REMINDER_TIME = "09:00"
+      # Safety cap on sends per run, like CHECKIN_MAX_SENDS_PER_RUN.
+      PRAYER_REMINDER_MAX_SENDS_PER_RUN = "100"
+    }
+  }
+
+  tags = {
+    Environment = var.environment
+    Purpose     = "Companion prayer reminder scheduled worker"
+  }
+}
+
+resource "aws_scheduler_schedule" "prayer_reminder_schedule" {
+  name = "${var.environment}-${var.project_name}-prayer-reminder"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  # Every 15 minutes — matches reading_plan_delivery / daily_verse_worker granularity.
+  # Per-user local delivery windows are resolved inside the worker, so a 15-min cadence
+  # lands each reminder within ~15 min of its target local time.
+  schedule_expression          = "rate(15 minutes)"
+  schedule_expression_timezone = "UTC"
+
+  target {
+    arn      = aws_lambda_function.prayer_reminder.arn
     role_arn = aws_iam_role.companion_scheduler_role.arn
   }
 }
