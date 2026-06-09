@@ -1,6 +1,12 @@
 """
-Agent Service using LangChain
-Handles conversation logic, memory, and guardrails for Versiful chat agent
+Agent Service using LangChain + LangGraph
+
+Handles conversation logic, long-term memory, and guardrails for the Versiful
+companion agent. The turn pipeline (guardrails -> load_history -> retrieve_memory ->
+generate -> extract -> persist) is implemented as `step_*` methods here and wired
+into a LangGraph `StateGraph` by `agent_graph.build_companion_graph`. If LangGraph (or
+any memory dependency) is unavailable, `process_message` transparently falls back to
+running the same steps directly, so a missing dependency never breaks the core reply.
 """
 import os
 import json
@@ -19,6 +25,20 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_openai import ChatOpenAI
 from posthog import Posthog
 from posthog.ai.langchain import CallbackHandler
+
+# Companion memory components. Imported defensively: if the langchain layer hasn't
+# been rebuilt with langgraph/psycopg yet, the agent still answers (memory disabled).
+try:
+    import agent_tools
+    import memory_retrieval
+    import memory_extractor
+    _MEMORY_AVAILABLE = True
+except Exception as _mem_err:  # pragma: no cover
+    agent_tools = None
+    memory_retrieval = None
+    memory_extractor = None
+    _MEMORY_AVAILABLE = False
+    logging.getLogger().warning("Companion memory modules unavailable: %s", _mem_err)
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -137,8 +157,21 @@ class AgentService:
         else:
             logger.warning("PostHog API key not provided, tracing disabled")
         
-        # Initialize tools (just Versiful info)
+        # Initialize tools. The full companion tool set (recall + prayers/reflections +
+        # account-management + reading plans, spec §5.3/§5.4) is built by
+        # agent_tools.build_companion_tools() when the memory/shared modules loaded;
+        # otherwise we run with the base info tool only. Each tool degrades gracefully
+        # and never crashes the turn.
         self.tools = [get_versiful_info]
+        if _MEMORY_AVAILABLE:
+            try:
+                self.tools.extend(agent_tools.build_companion_tools())
+            except Exception as e:
+                logger.warning("Could not register companion tools: %s", str(e))
+        logger.info(
+            "Registered %d tools: %s",
+            len(self.tools), [getattr(t, "name", str(t)) for t in self.tools]
+        )
         
         # LLM config
         llm_config = self.config['llm']
@@ -158,8 +191,20 @@ class AgentService:
             max_tokens=50
         )
         
-        logger.info("AgentService initialized with model: %s and %d tools", 
-                   llm_config['model'], len(self.tools))
+        # Compile the LangGraph companion graph. If LangGraph isn't installed yet,
+        # process_message() falls back to running the same steps directly.
+        self.graph = None
+        try:
+            from agent_graph import build_companion_graph
+            self.graph = build_companion_graph(self)
+            logger.info("Companion LangGraph compiled")
+        except Exception as e:
+            logger.warning("LangGraph unavailable, using direct pipeline fallback: %s", str(e))
+
+        logger.info(
+            "AgentService initialized with model: %s, %d tools, memory=%s, graph=%s",
+            llm_config['model'], len(self.tools), _MEMORY_AVAILABLE, self.graph is not None
+        )
     
     def _check_guardrails(self, message: str) -> tuple[bool, Optional[str], bool]:
         """
@@ -269,7 +314,8 @@ class AgentService:
         phone_number: str = None,
         user_id: str = None,
         posthog_distinct_id: str = None,
-        trace_id: str = None
+        trace_id: str = None,
+        memory_context: str = None
     ) -> str:
         """Generate response using LLM with tool calling support and PostHog tracing"""
         # Select appropriate LLM config and system prompt
@@ -291,6 +337,11 @@ class AgentService:
         if bible_version:
             bible_instruction = f"\n\nIMPORTANT: When citing Bible verses, always use the {bible_version} translation. The user has specifically requested this version."
             system_prompt = system_prompt + bible_instruction
+        
+        # Inject long-term companion memory context (Neon). Empty when Neon is
+        # unavailable or there's nothing remembered yet — the agent still answers.
+        if memory_context:
+            system_prompt = system_prompt + "\n\n" + memory_context
         
         # Build messages for LLM
         llm_messages = [SystemMessage(content=system_prompt)]
@@ -398,6 +449,120 @@ class AgentService:
         
         return response
     
+    # ------------------------------------------------------------------
+    # Pipeline steps (used as LangGraph nodes AND by the direct fallback)
+    # Each returns a partial state update dict, matching LangGraph's contract.
+    # ------------------------------------------------------------------
+    def route_after_guardrails(self, state: Dict[str, Any]) -> str:
+        """Conditional edge: short-circuit to END on a crisis, else continue."""
+        return "crisis" if state.get("needs_crisis") else "continue"
+
+    def step_guardrails(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        needs_crisis, crisis_response, is_off_topic = self._check_guardrails(
+            state.get("message", "")
+        )
+        update: Dict[str, Any] = {
+            "needs_crisis": needs_crisis,
+            "is_off_topic": is_off_topic,
+        }
+        if needs_crisis:
+            update["response"] = crisis_response
+        return update
+
+    def step_load_history(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Bound the DynamoDB-loaded episodic history to the context window."""
+        history = state.get("history") or []
+        window = self.config['history']['context_window']
+        if len(history) > window:
+            history = history[-window:]
+        return {"history": history}
+
+    def step_retrieve_memory(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Assemble Neon-backed companion context. Degrades to '' on any failure."""
+        if not _MEMORY_AVAILABLE:
+            return {"memory_context": ""}
+        ctx = ""
+        try:
+            ctx = memory_retrieval.build_companion_context(
+                user_id=state.get("user_id"),
+                current_message=state.get("message", ""),
+                first_name=state.get("first_name"),
+            )
+        except Exception as e:  # retrieval already guards; this is belt-and-suspenders
+            logger.warning("retrieve_memory degraded: %s", str(e))
+        return {"memory_context": ctx}
+
+    def step_generate(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Run the LLM (+ tools) for this turn. This is the only critical-path step."""
+        # Expose the current user to tools (e.g. recall) for the duration of the call.
+        token = None
+        if _MEMORY_AVAILABLE:
+            token = agent_tools.current_user_id.set(state.get("user_id"))
+        try:
+            messages = (state.get("history") or []) + [
+                {"role": "user", "content": state.get("message", "")}
+            ]
+            response = self._generate_llm_response(
+                messages,
+                state.get("channel", "web"),
+                state.get("is_off_topic", False),
+                state.get("bible_version"),
+                state.get("first_name"),
+                thread_id=state.get("thread_id"),
+                phone_number=state.get("phone_number"),
+                user_id=state.get("user_id"),
+                posthog_distinct_id=state.get("posthog_distinct_id"),
+                trace_id=state.get("trace_id"),
+                memory_context=state.get("memory_context"),
+            )
+        finally:
+            if token is not None:
+                agent_tools.current_user_id.reset(token)
+        return {"response": self._format_response(response, state.get("channel", "web"))}
+
+    def step_extract(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Post-turn extraction (inline when extract_inline). Best-effort."""
+        if not _MEMORY_AVAILABLE:
+            return {"extraction": None}
+        if not state.get("extract_inline", True) or not state.get("user_id"):
+            return {"extraction": None}
+        parsed = memory_extractor.extract_only(
+            user_message=state.get("message", ""),
+            assistant_response=state.get("response", ""),
+            recent_history=state.get("history"),
+        )
+        return {"extraction": parsed}
+
+    def step_persist(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Persist extracted memories/reflections to Neon. Best-effort."""
+        if not _MEMORY_AVAILABLE:
+            return {}
+        parsed = state.get("extraction")
+        if parsed and state.get("user_id"):
+            try:
+                memory_extractor.persist_extraction(
+                    user_id=state.get("user_id"),
+                    channel=state.get("channel", "web"),
+                    parsed=parsed,
+                    source_msg_id=state.get("source_msg_id"),
+                    session_id=state.get("session_id"),
+                )
+            except Exception as e:
+                logger.warning("persist step failed (ignored): %s", str(e))
+        return {}
+
+    def _run_pipeline_fallback(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Run the same steps directly when LangGraph isn't available."""
+        state.update(self.step_guardrails(state))
+        if self.route_after_guardrails(state) == "crisis":
+            return state
+        state.update(self.step_load_history(state))
+        state.update(self.step_retrieve_memory(state))
+        state.update(self.step_generate(state))
+        state.update(self.step_extract(state))
+        state.update(self.step_persist(state))
+        return state
+
     def process_message(
         self,
         thread_id: str,
@@ -409,65 +574,74 @@ class AgentService:
         user_first_name: str = None,
         phone_number: str = None,
         posthog_distinct_id: str = None,
-        trace_id: str = None
+        trace_id: str = None,
+        source_msg_id: str = None,
+        extract_inline: bool = True
     ) -> Dict[str, Any]:
         """
-        Process a message and generate a response
-        
+        Process a message and generate a response by running the companion graph.
+
         Args:
             thread_id: Unique thread identifier
             message: User's message
             channel: "sms" or "web"
-            history: Previous messages in format [{"role": "user/assistant", "content": "..."}]
-            user_id: Optional user ID
+            history: Previous messages [{"role": "user/assistant", "content": "..."}]
+            user_id: Optional user ID (Cognito sub) — memory is scoped to this
             bible_version: Optional preferred Bible version (e.g., 'KJV', 'NIV')
             user_first_name: Optional user's first name for personalization
             phone_number: Optional phone number (for SMS tracing)
             posthog_distinct_id: Optional PostHog distinct_id for event tracking
-            trace_id: Optional trace ID to group related LLM calls (generated if not provided)
-            
+            trace_id: Optional trace ID to group related LLM calls (generated if absent)
+            source_msg_id: Optional DynamoDB chat_messages id for the user turn (tagged
+                onto extracted memories)
+            extract_inline: Run extraction inline this turn (web). SMS sets False and
+                dispatches extraction asynchronously from the chat handler.
+
         Returns:
             Dict with 'response' and metadata
         """
         logger.info("Processing message for thread: %s, channel: %s", thread_id, channel)
-        
-        if history is None:
-            history = []
-        
-        # Generate a trace ID for this message if not provided
-        # This groups all LLM calls for handling this message together
+
         if not trace_id:
             import uuid
             trace_id = str(uuid.uuid4())
             logger.info(f"Generated trace_id for message: {trace_id}")
-        
-        # Check guardrails first
-        needs_crisis, crisis_response, is_off_topic = self._check_guardrails(message)
-        
-        if needs_crisis:
-            # Return crisis intervention response immediately
-            response = crisis_response
-        else:
-            # Add current message to history for context
-            messages = history + [{"role": "user", "content": message}]
-            
-            # Generate LLM response
-            response = self._generate_llm_response(
-                messages, 
-                channel, 
-                is_off_topic, 
-                bible_version, 
-                user_first_name,
-                thread_id=thread_id,
-                phone_number=phone_number,
-                user_id=user_id,
-                posthog_distinct_id=posthog_distinct_id,
-                trace_id=trace_id
-            )
-            
-            # Format response
-            response = self._format_response(response, channel)
-        
+
+        state: Dict[str, Any] = {
+            "thread_id": thread_id,
+            "message": message,
+            "channel": channel,
+            "history": history or [],
+            "user_id": user_id,
+            "bible_version": bible_version,
+            "first_name": user_first_name,
+            "phone_number": phone_number,
+            "posthog_distinct_id": posthog_distinct_id,
+            "trace_id": trace_id,
+            "source_msg_id": source_msg_id,
+            "extract_inline": extract_inline,
+            "memory_context": "",
+            "needs_crisis": False,
+            "is_off_topic": False,
+            "response": "",
+            "extraction": None,
+        }
+
+        try:
+            if self.graph is not None:
+                final_state = self.graph.invoke(state)
+            else:
+                final_state = self._run_pipeline_fallback(state)
+        except Exception as e:
+            # Last-resort safety net: never fail the core reply.
+            logger.error("Pipeline error, returning safe fallback: %s", str(e))
+            final_state = state
+            if not final_state.get("response"):
+                final_state["response"] = (
+                    "I apologize, but I'm having trouble responding right now. "
+                    "Please try again in a moment."
+                )
+
         # Flush PostHog events before returning (critical for Lambda)
         if self.posthog:
             try:
@@ -475,12 +649,12 @@ class AgentService:
                 logger.info("Flushed PostHog events")
             except Exception as e:
                 logger.error(f"Error flushing PostHog: {str(e)}")
-        
+
         return {
-            "response": response,
+            "response": final_state.get("response", ""),
             "thread_id": thread_id,
             "channel": channel,
-            "needs_crisis_intervention": needs_crisis,
+            "needs_crisis_intervention": final_state.get("needs_crisis", False),
             "timestamp": datetime.utcnow().isoformat() + 'Z',
             "trace_id": trace_id
         }

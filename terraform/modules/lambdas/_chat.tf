@@ -23,8 +23,14 @@ resource "aws_lambda_function" "chat_function" {
   filename         = data.archive_file.chat_zip.output_path
   source_code_hash = data.archive_file.chat_zip.output_base64sha256
   
+  # shared_dependencies is mounted to pick up the promoted companion memory modules
+  # (neon_client, embeddings, memory_store, memory_retrieval, memory_extractor) +
+  # secrets_helper. It is ordered BEFORE langchain so, on any /opt/python file
+  # collision (e.g. openai/pydantic/posthog), the langchain layer (listed last) wins
+  # per AWS layer merge order — preserving the chat lambda's pinned langchain stack.
   layers = [
     aws_lambda_layer_version.core_layer.arn,
+    aws_lambda_layer_version.shared_dependencies.arn,
     aws_lambda_layer_version.langchain_layer.arn
   ]
   
@@ -35,9 +41,20 @@ resource "aws_lambda_function" "chat_function" {
     variables = {
       ENVIRONMENT           = var.environment
       PROJECT_NAME          = var.project_name
+      SECRET_ARN            = var.secret_arn
       CHAT_MESSAGES_TABLE   = aws_dynamodb_table.chat_messages.name
       CHAT_SESSIONS_TABLE   = aws_dynamodb_table.chat_sessions.name
       USERS_TABLE           = "${var.environment}-${var.project_name}-users"
+      VERSE_HISTORY_TABLE   = aws_dynamodb_table.verse_history.name
+      # Companion agent tools (save_prayer / account / reading-plan / get_account_status)
+      # read these at runtime. IAM already covers them: companion_dynamodb_access grants
+      # prayers + user_reading_plans, and dynamodb_access grants sms_usage.
+      PRAYERS_TABLE            = aws_dynamodb_table.prayers.name
+      USER_READING_PLANS_TABLE = aws_dynamodb_table.user_reading_plans.name
+      SMS_USAGE_TABLE          = "${var.environment}-${var.project_name}-sms-usage"
+      # Self-invoke target for async SMS memory extraction (spec §5.2). Literal name
+      # (not a self-reference) avoids a resource dependency cycle.
+      CHAT_FUNCTION_NAME    = "${var.environment}-${var.project_name}-chat"
       POSTHOG_API_KEY       = var.posthog_apikey
     }
   }
@@ -70,8 +87,12 @@ resource "aws_lambda_function" "web_chat_function" {
   filename         = data.archive_file.web_chat_zip.output_path
   source_code_hash = data.archive_file.web_chat_zip.output_base64sha256
   
+  # Same layering rationale as chat_function: shared_dependencies before langchain so
+  # web_handler -> chat_handler -> agent_service can import the shared memory modules,
+  # while the langchain layer (last) keeps precedence on any file collision.
   layers = [
     aws_lambda_layer_version.core_layer.arn,
+    aws_lambda_layer_version.shared_dependencies.arn,
     aws_lambda_layer_version.langchain_layer.arn
   ]
   
@@ -82,11 +103,19 @@ resource "aws_lambda_function" "web_chat_function" {
     variables = {
       ENVIRONMENT           = var.environment
       PROJECT_NAME          = var.project_name
+      SECRET_ARN            = var.secret_arn
       CHAT_MESSAGES_TABLE   = aws_dynamodb_table.chat_messages.name
       CHAT_SESSIONS_TABLE   = aws_dynamodb_table.chat_sessions.name
+      USERS_TABLE           = "${var.environment}-${var.project_name}-users"
+      VERSE_HISTORY_TABLE   = aws_dynamodb_table.verse_history.name
       CHAT_FUNCTION_NAME    = aws_lambda_function.chat_function.function_name
       CORS_ORIGIN           = var.allowed_cors_origins[0]
       POSTHOG_API_KEY       = var.posthog_apikey
+      # web_handler -> chat_handler -> agent_service can run the agent in-process, so it
+      # needs the same companion-tool table env vars as chat_function.
+      PRAYERS_TABLE            = aws_dynamodb_table.prayers.name
+      USER_READING_PLANS_TABLE = aws_dynamodb_table.user_reading_plans.name
+      SMS_USAGE_TABLE          = "${var.environment}-${var.project_name}-sms-usage"
     }
   }
 
@@ -116,6 +145,37 @@ resource "aws_lambda_permission" "web_chat_invoke_chat" {
   function_name = aws_lambda_function.chat_function.function_name
   principal     = "lambda.amazonaws.com"
   source_arn    = aws_lambda_function.web_chat_function.arn
+}
+
+# Allow the chat lambda to invoke ITSELF asynchronously for memory extraction
+# (spec §5.2 "async for SMS"). chat_handler does an InvocationType='Event'
+# self-invoke; without this it falls back to running extraction inline.
+#
+# NOTE: an account-wide invoke policy (lambda_invoke_policy, Resource="*") is already
+# attached to lambda_exec_role, so this scoped grant is additive/explicit (least-
+# privilege intent for the self-invoke path) and documents the dependency.
+resource "aws_iam_policy" "chat_self_invoke" {
+  name        = "${var.environment}-${var.project_name}-chat-self-invoke"
+  description = "Allow the chat lambda to invoke itself (async SMS memory extraction)"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = ["lambda:InvokeFunction"]
+        Resource = [
+          aws_lambda_function.chat_function.arn,
+          "${aws_lambda_function.chat_function.arn}:*"
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "attach_chat_self_invoke" {
+  role       = aws_iam_role.lambda_exec_role.name
+  policy_arn = aws_iam_policy.chat_self_invoke.arn
 }
 
 # API Gateway Integration - POST /chat/message

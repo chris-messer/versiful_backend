@@ -121,3 +121,10 @@ variable "posthog_apikey" {
   sensitive   = true
 }
 
+variable "neon_database_url" {
+  description = "Neon (Postgres + pgvector) POOLED connection string for this env's Neon project (the ...-pooler... host). Retrieve with: neonctl connection-string --project-id <ID> --pooled. Supply per-env via the gitignored <env>.tfvars or TF_VAR_neon_database_url; never commit. Leave unset (null) to skip writing a value."
+  type        = string
+  sensitive   = true
+  default     = null
+}
+

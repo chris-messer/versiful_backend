@@ -22,6 +22,8 @@ resource "aws_secretsmanager_secret_version" "secret_version" {
     # Stripe keys
     "stripe_publishable_key"  = var.stripe_publishable_key,
     "stripe_secret_key"       = var.stripe_secret_key,
-    "stripe_webhook_secret"   = var.stripe_webhook_secret
+    "stripe_webhook_secret"   = var.stripe_webhook_secret,
+    # Neon (Postgres + pgvector) pooled connection string for the LangGraph agent's long-term memory
+    "neon_database_url"       = var.neon_database_url
   })
 }

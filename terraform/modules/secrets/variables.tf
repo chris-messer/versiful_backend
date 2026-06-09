@@ -105,3 +105,10 @@ variable "stripe_webhook_secret" {
   type        = string
   sensitive   = true
 }
+
+variable "neon_database_url" {
+  description = "Neon (Postgres + pgvector) POOLED connection string for this env's Neon project (the ...-pooler... host). Supplied per-env; never committed. Stored under the 'neon_database_url' key in the combined secret."
+  type        = string
+  sensitive   = true
+  default     = null
+}

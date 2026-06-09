@@ -1,7 +1,14 @@
 langchain-core==0.3.28
 langchain-openai==0.2.13
+langgraph==0.2.76
 pydantic==2.10.6
 pydantic-core==2.27.2
 openai==1.109.1
 pyyaml==6.0.3
 posthog==7.5.1
+# Neon (Postgres + pgvector) access for the companion memory system.
+# psycopg[binary] ships manylinux2014 wheels (compatible with the layer build flags).
+# We format pgvector embeddings as `'[..]'::vector` literals in SQL, so the
+# `pgvector` python package (and its numpy dependency) is intentionally NOT added
+# here — this keeps the layer well under the 250 MB unzipped Lambda limit.
+psycopg[binary]==3.2.13

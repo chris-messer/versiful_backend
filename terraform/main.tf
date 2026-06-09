@@ -48,6 +48,9 @@ module "secrets" {
   stripe_publishable_key = var.stripe_publishable_key
   stripe_secret_key      = var.stripe_secret_key
   stripe_webhook_secret  = var.stripe_webhook_secret
+
+  # Neon (Postgres + pgvector) pooled connection string for long-term memory
+  neon_database_url = var.neon_database_url
 }
 
 module "s3" {

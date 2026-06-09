@@ -195,9 +195,22 @@ resource "null_resource" "package_layer" {
   }
 
   triggers = {
-    requirements   = filemd5("${path.module}/../../../lambdas/layer/requirements.txt")
-    shared_secrets = filemd5("${path.module}/../../../lambdas/shared/secrets_helper.py")
-    shared_sms     = filemd5("${path.module}/../../../lambdas/shared/sms_notifications.py")
+    requirements      = filemd5("${path.module}/../../../lambdas/layer/requirements.txt")
+    shared_secrets    = filemd5("${path.module}/../../../lambdas/shared/secrets_helper.py")
+    shared_sms        = filemd5("${path.module}/../../../lambdas/shared/sms_notifications.py")
+    shared_neon       = filemd5("${path.module}/../../../lambdas/shared/neon_client.py")
+    shared_embeddings = filemd5("${path.module}/../../../lambdas/shared/embeddings.py")
+    shared_mem_store  = filemd5("${path.module}/../../../lambdas/shared/memory_store.py")
+    shared_mem_recall = filemd5("${path.module}/../../../lambdas/shared/memory_retrieval.py")
+    shared_mem_extract = filemd5("${path.module}/../../../lambdas/shared/memory_extractor.py")
+    # Companion agent-tool callables promoted from the feature lambdas so the chat
+    # lambda can import them (TASK 2). cp ../shared/*.py already bundles them; these
+    # triggers force a layer rebuild when any of them change.
+    shared_preferences   = filemd5("${path.module}/../../../lambdas/shared/preferences.py")
+    shared_account_tools = filemd5("${path.module}/../../../lambdas/shared/account_tools.py")
+    shared_prayer_tools  = filemd5("${path.module}/../../../lambdas/shared/prayer_tools.py")
+    shared_reflect_tools = filemd5("${path.module}/../../../lambdas/shared/reflection_tools.py")
+    shared_plans_repo    = filemd5("${path.module}/../../../lambdas/shared/reading_plans_repo.py")
   }
 }
 resource "aws_lambda_layer_version" "shared_dependencies" {

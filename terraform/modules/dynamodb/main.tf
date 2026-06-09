@@ -7,6 +7,20 @@ resource "aws_dynamodb_table" "users" {
     name = "userId"
     type = "S"
   }
+
+  # phoneNumber attribute + GSI so the unregistered-SMS lookup becomes a Query
+  # instead of a Scan (COMPANION_SPEC.md §5.1 -- fixes the Scan + Limit-before-filter
+  # correctness bug). Spec does not name the index, so use phoneNumber-index.
+  attribute {
+    name = "phoneNumber"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "phoneNumber-index"
+    hash_key        = "phoneNumber"
+    projection_type = "ALL"
+  }
 }
 
 # Promo code tracking for Stripe coupons/promotions
