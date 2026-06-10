@@ -41,6 +41,12 @@ resource "aws_lambda_function" "daily_verse_function" {
     aws_lambda_layer_version.langchain_layer.arn
   ]
   timeout = 30
+  # 128 MB (the Lambda default) gives too little CPU to finish the Neon TLS/SCRAM
+  # handshake within the timeout, so synchronous Neon reads hung to the 30 s wall
+  # (a clean 503 turned into a timeout). 512 MB matches the known-good chat lambda
+  # and lets psycopg connect in ~1 s; connect_timeout then degrades cleanly if Neon
+  # is genuinely down. (Memory is the CPU knob on Lambda.)
+  memory_size = 512
 
   environment {
     variables = {
@@ -202,6 +208,10 @@ resource "aws_lambda_function" "reflections_function" {
     aws_lambda_layer_version.langchain_layer.arn
   ]
   timeout = 30
+  # See daily_verse note: 128 MB starves CPU for the Neon TLS handshake and the
+  # Neon-backed reflections endpoints hung to the 30 s timeout. 512 MB (chat parity)
+  # connects in ~1 s and preserves clean 503 degradation when Neon is unavailable.
+  memory_size = 512
 
   environment {
     variables = {
@@ -456,6 +466,10 @@ resource "aws_lambda_function" "walk_function" {
     aws_lambda_layer_version.langchain_layer.arn
   ]
   timeout = 30
+  # See daily_verse note: 128 MB starves CPU for the Neon TLS handshake, so
+  # GET /walk/memories hung to the 30 s timeout instead of returning. 512 MB (chat
+  # parity) connects in ~1 s and keeps clean 503 degradation if Neon is down.
+  memory_size = 512
 
   environment {
     variables = {
