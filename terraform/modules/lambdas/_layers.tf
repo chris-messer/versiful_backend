@@ -28,7 +28,7 @@ resource "aws_lambda_layer_version" "core_layer" {
   layer_name          = "${var.environment}-core-dependencies"
   compatible_runtimes = ["python3.11"]
   description         = "Core dependencies: requests"
-  
+
   depends_on = [null_resource.package_core_layer]
 }
 
@@ -58,7 +58,7 @@ resource "aws_lambda_layer_version" "jwt_layer" {
   layer_name          = "${var.environment}-jwt-dependencies"
   compatible_runtimes = ["python3.11"]
   description         = "JWT dependencies: PyJWT, cryptography"
-  
+
   depends_on = [null_resource.package_jwt_layer]
 }
 
@@ -88,7 +88,7 @@ resource "aws_lambda_layer_version" "sms_layer" {
   layer_name          = "${var.environment}-sms-dependencies"
   compatible_runtimes = ["python3.11"]
   description         = "SMS dependencies: twilio"
-  
+
   depends_on = [null_resource.package_sms_layer]
 }
 
@@ -156,7 +156,14 @@ resource "aws_lambda_layer_version" "langchain_layer" {
   layer_name          = "${var.environment}-langchain-dependencies"
   compatible_runtimes = ["python3.11"]
   description         = "LangChain dependencies: langchain, langgraph, openai"
-  
+  # Without this, Terraform never noticed the rebuilt zip and kept the lambdas pinned
+  # to a stale published version that predates the companion shared modules (neon_client,
+  # memory_store, ...). That stale layer is why the Neon-backed reflections lambda crashed
+  # at import ("No module named 'neon_client'", 500) and walk degraded to 503. Hashing the
+  # built zip (same pattern as shared_dependencies) republishes the layer whenever its
+  # contents change. (cp ../../shared/*.py already bundles the modules into the zip.)
+  source_code_hash = filebase64sha256("${path.module}/../../../lambdas/layers/langchain/layer.zip")
+
   depends_on = [null_resource.package_langchain_layer]
 }
 

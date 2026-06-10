@@ -1,4 +1,4 @@
-# REST Lambdas for the Bible Companion features (COMPANION_SPEC.md §14).
+# REST Lambdas for the Bible Companion features (COMPANION_SPEC.md ?14).
 # Per-feature lambdas (definition + IAM via shared role + env + API Gateway routes).
 # Handlers are minimal 501 stubs; feature teams fill in business logic later.
 #
@@ -35,7 +35,7 @@ resource "aws_lambda_function" "daily_verse_function" {
   filename         = data.archive_file.daily_verse_zip.output_path
   source_code_hash = data.archive_file.daily_verse_zip.output_base64sha256
   # langchain_layer supplies psycopg/Neon AND the shared modules so the read endpoint
-  # can personalize from memories (recommended; spec §6). No twilio/stripe needed, so we
+  # can personalize from memories (recommended; spec ?6). No twilio/stripe needed, so we
   # avoid the heavy shared_dependencies layer (kept this function under the 250 MB limit).
   layers = [
     aws_lambda_layer_version.langchain_layer.arn
@@ -196,7 +196,7 @@ resource "aws_lambda_function" "reflections_function" {
   filename         = data.archive_file.reflections_zip.output_path
   source_code_hash = data.archive_file.reflections_zip.output_base64sha256
   # langchain_layer supplies psycopg (and the shared modules) so the Neon-backed
-  # reflections endpoints work. REQUIRED — without it every endpoint 503s (spec §8).
+  # reflections endpoints work. REQUIRED -- without it every endpoint 503s (spec ?8).
   # No twilio/stripe needed, so shared_dependencies is intentionally not mounted.
   layers = [
     aws_lambda_layer_version.langchain_layer.arn
@@ -261,7 +261,7 @@ resource "aws_apigatewayv2_route" "reflections_delete" {
 }
 
 # ============================================================================
-# plans -- catalog (public) + enrollment/progress (authed). COMPANION_SPEC.md §14.
+# plans -- catalog (public) + enrollment/progress (authed). COMPANION_SPEC.md ?14.
 # ============================================================================
 data "archive_file" "plans_zip" {
   type        = "zip"
@@ -282,9 +282,9 @@ resource "aws_lambda_function" "plans_function" {
 
   environment {
     variables = {
-      ENVIRONMENT                       = var.environment
-      PROJECT_NAME                      = var.project_name
-      SECRET_ARN                        = var.secret_arn
+      ENVIRONMENT                      = var.environment
+      PROJECT_NAME                     = var.project_name
+      SECRET_ARN                       = var.secret_arn
       USERS_TABLE                      = local.users_table_name
       READING_PLANS_TABLE              = aws_dynamodb_table.reading_plans.name
       READING_PLAN_DAYS_TABLE          = aws_dynamodb_table.reading_plan_days.name
@@ -315,9 +315,16 @@ resource "aws_apigatewayv2_integration" "plans_integration" {
   api_id           = var.apiGateway_lambda_api_id
   integration_type = "AWS_PROXY"
   integration_uri  = aws_lambda_function.plans_function.invoke_arn
+  # Pin payload format 2.0 so the event carries `routeKey` (e.g. "POST /plans/{slug}/enroll")
+  # and the templated `pathParameters`. The plans router matches on the route TEMPLATE; under
+  # the implicit 1.0 default the event has no routeKey, so get_route() rebuilt the concrete
+  # path ("POST /plans/anxiety-7/enroll") which never matched -> parametrized routes fell
+  # through to 401 (public branch) / 404 "No route" (authed branch). 2.0 is what the handler
+  # (and the shared get_user_id, which reads authorizer.lambda.userId) was written for.
+  payload_format_version = "2.0"
 }
 
-# Catalog routes are public (spec §14: "public ok").
+# Catalog routes are public (spec ?14: "public ok").
 resource "aws_apigatewayv2_route" "plans_catalog" {
   api_id    = var.apiGateway_lambda_api_id
   route_key = "GET /plans"
@@ -363,7 +370,7 @@ resource "aws_apigatewayv2_route" "plans_pause" {
 }
 
 # ============================================================================
-# checkins -- GET /checkins (upcoming/recent check-ins transparency view, §10.7)
+# checkins -- GET /checkins (upcoming/recent check-ins transparency view, ?10.7)
 # ============================================================================
 data "archive_file" "checkins_zip" {
   type        = "zip"
@@ -426,7 +433,7 @@ resource "aws_apigatewayv2_route" "checkins_list" {
 
 # ============================================================================
 # walk -- GET /walk/summary + memory controls (GET/DELETE /walk/memories[/{id}])
-# Aggregates DynamoDB companion tables + Neon (memories/reflections). §11, §11.2a.
+# Aggregates DynamoDB companion tables + Neon (memories/reflections). ?11, ?11.2a.
 # ============================================================================
 data "archive_file" "walk_zip" {
   type        = "zip"
@@ -443,7 +450,7 @@ resource "aws_lambda_function" "walk_function" {
   filename         = data.archive_file.walk_zip.output_path
   source_code_hash = data.archive_file.walk_zip.output_base64sha256
   # langchain_layer supplies psycopg (and the shared modules) for the Neon memory
-  # list/delete/summary controls. REQUIRED for the memory endpoints (spec §11.2a).
+  # list/delete/summary controls. REQUIRED for the memory endpoints (spec ?11.2a).
   # No twilio/stripe needed, so shared_dependencies is intentionally not mounted.
   layers = [
     aws_lambda_layer_version.langchain_layer.arn
@@ -521,7 +528,7 @@ resource "aws_apigatewayv2_route" "walk_memory_delete" {
 
 # ============================================================================
 # account_management -- GET/PUT /users/preferences (comms-pref attrs on users item)
-# Spec §14 lists these routes; §5.4/§12 note the attributes live on the users item.
+# Spec ?14 lists these routes; ?5.4/?12 note the attributes live on the users item.
 # ============================================================================
 data "archive_file" "account_management_zip" {
   type        = "zip"

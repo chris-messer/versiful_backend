@@ -130,6 +130,14 @@ def get_route(event):
         or event.get("requestContext", {}).get("http", {}).get("method", "")
     )
     path = event.get("path") or event.get("rawPath") or ""
+    # Defensive fallback for payload format 1.0 (no routeKey): rebuild the route
+    # TEMPLATE by substituting each concrete path-param value back to its {name}
+    # placeholder, so "/plans/anxiety-7/enroll" -> "/plans/{slug}/enroll" and the
+    # templated router below still matches. No-op when routeKey is present (2.0).
+    params = event.get("pathParameters") or {}
+    for name, value in params.items():
+        if value:
+            path = path.replace(str(value), "{" + name + "}")
     return f"{method} {path}".strip()
 
 
