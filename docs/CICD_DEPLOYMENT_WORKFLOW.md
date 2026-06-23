@@ -2,6 +2,24 @@
 
 This document outlines the complete deployment process for both backend (Terraform) and frontend (GitHub Actions CI/CD) changes.
 
+## ⚠️ TEMPORARY: Post-CLI hotfix — remove after next prod deploy
+
+> **Delete this section** once the targeted apply below succeeds.
+
+- **What happened (Jun 2026):** Stripe webhook billing bug fixed via AWS CLI `update-function-code` on staging and prod (commit `ddb2362` on `main`) — not via Terraform apply.
+- **Drift:** Lambda `prod-versiful-stripe-webhook` (and staging) have a new `CodeSha256` in AWS; Terraform state still reflects the last apply.
+- **Next prod deploy:** Use a **`main` checkout** (not `dev` — companion work on dev must not ship). Run targeted reconcile before or alongside your normal prod apply:
+
+```bash
+cd terraform
+../scripts/tf-env.sh prod plan -target=module.lambdas.aws_lambda_function.stripe_webhook_function
+../scripts/tf-env.sh prod apply -target=module.lambdas.aws_lambda_function.stripe_webhook_function
+```
+
+- **Staging (optional):** Same targeted plan/apply from `main` checkout if desired.
+
+---
+
 ## Table of Contents
 - [Branch Naming Conventions](#branch-naming-conventions)
 - [Deployment Process Overview](#deployment-process-overview)
