@@ -45,7 +45,9 @@ except ImportError:  # chat-lambda context: no shared layer mounting secrets_hel
 # while Neon is suspended/unreachable.
 _FAILURE_COOLDOWN_SECONDS = 60
 # Bound connection + query latency so a slow Neon never blocks the core chat reply.
-_CONNECT_TIMEOUT_SECONDS = 3
+# A too-tight connect timeout caused spurious failures during the psycopg TLS
+# handshake against the pooled endpoint on cold starts, so allow a little more room.
+_CONNECT_TIMEOUT_SECONDS = 8
 _STATEMENT_TIMEOUT_MS = 4000
 
 _conn = None
@@ -118,7 +120,12 @@ def get_connection():
                 # PgBouncer transaction pooling is incompatible with server-side
                 # prepared statements; disable them.
                 prepare_threshold=None,
-                options=f"-c statement_timeout={_STATEMENT_TIMEOUT_MS}",
+                # NOTE: statement_timeout is deliberately NOT passed here as a
+                # startup `options` parameter. Neon's pooled (PgBouncer) endpoint
+                # rejects it: "unsupported startup parameter in options:
+                # statement_timeout". It is instead enforced per-transaction via
+                # `SET LOCAL statement_timeout` in execute(), which is fully
+                # compatible with transaction pooling.
             )
             _conn = conn
             logger.info("Neon connection established")
@@ -150,13 +157,22 @@ def execute(
     if conn is None:
         return None
     try:
-        with conn.cursor() as cur:
-            cur.execute(query, params or ())
-            if fetch == "one":
-                return cur.fetchone()
-            if fetch == "none":
-                return cur.rowcount
-            return cur.fetchall()
+        # Apply the query timeout per-transaction with SET LOCAL instead of as a
+        # connection startup parameter. Neon's pooled (PgBouncer) endpoint rejects
+        # `statement_timeout` in the startup `options` package, but a SET LOCAL
+        # binds the timeout to the exact pooled server connection executing this
+        # transaction, so it works under transaction pooling and still bounds the
+        # query. The explicit transaction wraps the SET LOCAL + the query together
+        # (the connection is autocommit, so each call is otherwise its own txn).
+        with conn.transaction():
+            with conn.cursor() as cur:
+                cur.execute(f"SET LOCAL statement_timeout = {int(_STATEMENT_TIMEOUT_MS)}")
+                cur.execute(query, params or ())
+                if fetch == "one":
+                    return cur.fetchone()
+                if fetch == "none":
+                    return cur.rowcount
+                return cur.fetchall()
     except Exception as e:
         logger.warning("Neon query failed: %s", str(e))
         # A broken connection should be dropped so the next turn reconnects.
