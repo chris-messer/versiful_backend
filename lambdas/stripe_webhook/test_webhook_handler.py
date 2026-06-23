@@ -654,3 +654,112 @@ class TestMissingUserId:
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
 
+
+class StripeLikeObject:
+    """Minimal StripeObject stand-in: bracket access only, no .get()."""
+
+    def __init__(self, data):
+        self._data = data
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def to_dict(self):
+        return self._data
+
+
+class TestStripeObjectCompatibility:
+    """Ensure handlers work with real Stripe API objects, not just dicts."""
+
+    @patch('webhook_handler.stripe.Webhook.construct_event')
+    @patch('webhook_handler.get_secrets')
+    @patch('webhook_handler.table.scan')
+    @patch('webhook_handler.table.update_item')
+    def test_subscription_updated_with_stripe_object(
+        self,
+        mock_update,
+        mock_scan,
+        mock_get_secrets,
+        mock_construct_event,
+    ):
+        mock_scan.return_value = {
+            'Items': [{
+                'userId': 'user-123',
+                'stripeCustomerId': 'cus_test123',
+            }]
+        }
+        mock_get_secrets.return_value = {'stripe_webhook_secret': 'whsec_test'}
+        mock_construct_event.return_value = {
+            'type': 'customer.subscription.updated',
+            'data': {
+                'object': StripeLikeObject({
+                    'id': 'sub_test123',
+                    'customer': 'cus_test123',
+                    'status': 'active',
+                    'current_period_end': 1735689600,
+                    'cancel_at_period_end': False,
+                    'items': {
+                        'data': [{
+                            'price': {
+                                'recurring': {
+                                    'interval': 'month',
+                                }
+                            }
+                        }]
+                    },
+                }),
+            },
+        }
+
+        response = webhook_handler.handler(
+            {'body': '{}', 'headers': {'stripe-signature': 'sig'}},
+            {},
+        )
+
+        assert response['statusCode'] == 200
+        mock_update.assert_called_once()
+
+    @patch('webhook_handler.stripe.Subscription.retrieve')
+    @patch('webhook_handler.stripe.Webhook.construct_event')
+    @patch('webhook_handler.get_secrets')
+    @patch('webhook_handler.table.scan')
+    @patch('webhook_handler.table.update_item')
+    def test_payment_succeeded_with_stripe_invoice(
+        self,
+        mock_update,
+        mock_scan,
+        mock_get_secrets,
+        mock_construct_event,
+        mock_retrieve_sub,
+    ):
+        mock_scan.return_value = {
+            'Items': [{
+                'userId': 'user-123',
+                'stripeCustomerId': 'cus_test123',
+            }]
+        }
+        mock_get_secrets.return_value = {'stripe_webhook_secret': 'whsec_test'}
+        mock_retrieve_sub.return_value = StripeLikeObject({
+            'id': 'sub_test123',
+            'status': 'active',
+            'current_period_end': 1735689600,
+        })
+        mock_construct_event.return_value = {
+            'type': 'invoice.payment_succeeded',
+            'data': {
+                'object': StripeLikeObject({
+                    'id': 'in_test123',
+                    'customer': 'cus_test123',
+                    'subscription': 'sub_test123',
+                }),
+            },
+        }
+
+        response = webhook_handler.handler(
+            {'body': '{}', 'headers': {'stripe-signature': 'sig'}},
+            {},
+        )
+
+        assert response['statusCode'] == 200
+        mock_update.assert_called_once()
+

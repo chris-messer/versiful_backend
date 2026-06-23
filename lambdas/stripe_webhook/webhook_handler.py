@@ -44,6 +44,34 @@ table = dynamodb.Table(table_name)
 promo_codes_table = dynamodb.Table(f"{env}-{project_name}-promo-codes")
 
 
+def _field(obj, key, default=None):
+    """Read a field from a plain dict or Stripe API object."""
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    try:
+        return obj[key]
+    except (KeyError, TypeError):
+        return default
+
+
+def _stripe_json(obj):
+    """Serialize Stripe objects for logging without crashing on nested data."""
+    try:
+        if hasattr(obj, "to_dict_recursive"):
+            payload = obj.to_dict_recursive()
+        elif hasattr(obj, "to_dict"):
+            payload = obj.to_dict()
+        elif isinstance(obj, dict):
+            payload = obj
+        else:
+            payload = str(obj)
+        return json.dumps(payload, default=str, indent=2)
+    except Exception:
+        return str(obj)
+
+
 def handler(event, context):
     """Handle Stripe webhook events"""
     logger.info("Received webhook event")
@@ -110,8 +138,8 @@ def handler(event, context):
 def handle_checkout_completed(session):
     """User completed checkout - subscription is being set up"""
     customer_id = session["customer"]
-    subscription_id = session.get("subscription")
-    user_id = session.get("metadata", {}).get("userId")
+    subscription_id = _field(session, "subscription")
+    user_id = _field(_field(session, "metadata") or {}, "userId")
     
     if not user_id:
         logger.error("No userId in checkout session metadata")
@@ -130,15 +158,14 @@ def handle_checkout_completed(session):
         expand=['items.data.price']
     )
     
-    # LOG THE ENTIRE SUBSCRIPTION OBJECT
-    logger.info(f"RAW SUBSCRIPTION OBJECT: {json.dumps(dict(subscription), default=str, indent=2)}")
+    logger.info(f"RAW SUBSCRIPTION OBJECT: {_stripe_json(subscription)}")
     
     # Access plan information
     plan_interval = subscription['items']['data'][0]['price']['recurring']['interval']
     plan = "monthly" if plan_interval == "month" else "annual"
     
     # Get current_period_end from the subscription object (not from items)
-    period_end = subscription.get('current_period_end')
+    period_end = _field(subscription, 'current_period_end')
     logger.info(f"Got current_period_end from subscription: {period_end}")
     
     update_expression = """
@@ -159,7 +186,7 @@ def handle_checkout_completed(session):
         ":plan": plan,
         ":cap": -1,  # Unlimited for paid plans
         ":status": subscription['status'],
-        ":cancel": subscription.get('cancel_at_period_end', False) or subscription.get('cancel_at') is not None,
+        ":cancel": _field(subscription, 'cancel_at_period_end', False) or _field(subscription, 'cancel_at') is not None,
         ":now": datetime.now(timezone.utc).isoformat()
     }
     
@@ -215,14 +242,16 @@ def _extract_promo_code(session):
             expand=["total_details.breakdown"]
         )
         
-        discounts = full_session.get("total_details", {}).get("breakdown", {}).get("discounts", [])
+        total_details = _field(full_session, "total_details") or {}
+        breakdown = _field(total_details, "breakdown") or {}
+        discounts = _field(breakdown, "discounts") or []
         if discounts:
-            discount = discounts[0].get("discount", {})
-            promo = discount.get("promotion_code")
+            discount = _field(discounts[0], "discount") or {}
+            promo = _field(discount, "promotion_code")
             if promo:
                 # promo is a Stripe PromotionCode ID; retrieve it to get the customer-facing code
                 promo_obj = stripe.PromotionCode.retrieve(promo)
-                return promo_obj.get("code", "").upper()
+                return (_field(promo_obj, "code") or "").upper()
     except Exception as e:
         logger.warning(f"Could not extract promo code from session: {e}")
     
@@ -263,16 +292,13 @@ def handle_subscription_created(subscription):
 
 def handle_subscription_updated(subscription):
     """Subscription was modified (plan change, cancellation scheduled, etc)"""
-    import json
-    
-    # LOG THE ENTIRE SUBSCRIPTION OBJECT FOR UPDATE
-    logger.info(f"RAW SUBSCRIPTION UPDATE OBJECT: {json.dumps(dict(subscription), default=str, indent=2)}")
+    logger.info(f"RAW SUBSCRIPTION UPDATE OBJECT: {_stripe_json(subscription)}")
     
     customer_id = subscription["customer"]
     
     logger.info(f"Subscription updated for customer {customer_id}")
-    logger.info(f"cancel_at_period_end: {subscription.get('cancel_at_period_end')}")
-    logger.info(f"status: {subscription.get('status')}")
+    logger.info(f"cancel_at_period_end: {_field(subscription, 'cancel_at_period_end')}")
+    logger.info(f"status: {_field(subscription, 'status')}")
     
     # Find user by customer ID
     response = table.scan(
@@ -284,19 +310,22 @@ def handle_subscription_updated(subscription):
         return
     
     user = response["Items"][0]
-    logger.info(f"Found user: {user['userId']}, cancel_at={subscription.get('cancel_at')}, cancel_at_period_end={subscription.get('cancel_at_period_end')}")
+    logger.info(
+        f"Found user: {user['userId']}, cancel_at={_field(subscription, 'cancel_at')}, "
+        f"cancel_at_period_end={_field(subscription, 'cancel_at_period_end')}"
+    )
     
     plan_interval = subscription["items"]["data"][0]["price"]["recurring"]["interval"]
     plan = "monthly" if plan_interval == "month" else "annual"
     
     # Get current_period_end from subscription object (not from items)
-    period_end = subscription.get('current_period_end')
+    period_end = _field(subscription, 'current_period_end')
     if not period_end:
         logger.warning(f"No current_period_end in subscription update for {subscription['id']}")
     
     # Determine if subscription is being canceled
     # Stripe sets either cancel_at_period_end=true OR cancel_at to a timestamp
-    is_canceling = subscription.get('cancel_at_period_end', False) or subscription.get('cancel_at') is not None
+    is_canceling = _field(subscription, 'cancel_at_period_end', False) or _field(subscription, 'cancel_at') is not None
     logger.info(f"Computed is_canceling: {is_canceling}")
     
     # Build update expression dynamically
@@ -333,7 +362,10 @@ def handle_subscription_updated(subscription):
         ExpressionAttributeValues=expression_values
     )
     
-    logger.info(f"Updated subscription for user {user['userId']}: {subscription['status']}, cancel_at_period_end: {subscription.get('cancel_at_period_end', False)}")
+    logger.info(
+        f"Updated subscription for user {user['userId']}: {subscription['status']}, "
+        f"cancel_at_period_end: {_field(subscription, 'cancel_at_period_end', False)}"
+    )
 
 
 def handle_subscription_deleted(subscription):
@@ -396,7 +428,7 @@ def handle_subscription_deleted(subscription):
 def handle_payment_failed(invoice):
     """Payment failed - mark subscription at risk"""
     customer_id = invoice["customer"]
-    subscription_id = invoice.get("subscription")
+    subscription_id = _field(invoice, "subscription")
     
     if not subscription_id:
         logger.info("Payment failed for non-subscription invoice")
@@ -439,7 +471,7 @@ def handle_payment_failed(invoice):
 def handle_payment_succeeded(invoice):
     """Payment succeeded - renewal confirmed"""
     customer_id = invoice["customer"]
-    subscription_id = invoice.get("subscription")
+    subscription_id = _field(invoice, "subscription")
     
     if not subscription_id:
         logger.info("Payment succeeded for non-subscription invoice")
@@ -459,7 +491,7 @@ def handle_payment_succeeded(invoice):
     subscription = stripe.Subscription.retrieve(subscription_id)
     
     # Get current_period_end from subscription object (not from items)
-    period_end = subscription.get('current_period_end')
+    period_end = _field(subscription, 'current_period_end')
     if not period_end:
         logger.warning(f"No current_period_end in subscription {subscription_id}")
     
